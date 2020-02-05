@@ -273,7 +273,3 @@ nyc.anova.diff
 ```{r}
 plot(TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95))
 ```
-
-## Multiplicative Effect
-- Due to the multiplicative effect caused by interactions the ability to interpret the above model has become challenging.
-- In effort to create not only a statistically significant model but a logically relevant model, we are breaking the room_type metric into pieces and comparing them by neighborhood. This allows us to compare apples to apple, due to the fact that comparing the price of a shared room versus an entire home/apt doesn't make sense. The servcies offere are not logically comparible. Therefore breaking out room_type variable and performig three separate 2-way anovas will give us statistically significant data as well as logically applicable data.
