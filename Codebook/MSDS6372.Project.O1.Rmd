@@ -1,0 +1,208 @@
+---
+title: "MSDS 6372 Project 1 Objective 1"
+author: "Jaclyn A Coate"
+date: "2/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(mice)
+library(skimr)
+library(corrplot)
+library(car)
+library(ISLR)
+library(ggplot2)
+library(gridExtra)
+library(SamplingStrata)
+```
+
+# Objective 1:
+## Question of Interest: what variables are used to predict price of a NYC Airbnb
+
+```{r data prep}
+nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
+head(nycraw)
+str(nycraw)
+```
+
+## EDA to determine type of multiple linear regression to perform
+
+#### Removing logically irrelevant variables
+
+```{r drop irrelevant variables}
+#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_reiview", "latitude", "longitude", "neighborhood","availability_365"
+nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood","availability_365"))
+head(nyc2)
+```
+
+#### Dependent Variable Check
+- Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
+```{r}
+nyc2 <- nyc2[!(nyc2$price==0),]
+invisible(view(nyc2))
+```
+
+#### NA Evaluation and Drop
+
+```{r NA eval}
+#Checking for NAs
+md.pattern(nyc2)
+nrow(nyc2)
+#Drop NAs that are present
+nyc3 <- na.omit(nyc2)
+#Confirming NA drop
+nrow(nyc3)
+```
+
+#### Zero variance variable check - all show variance so remain in model
+
+```{r zero variable check}
+#Results show no zero variance variables, leave in all
+skim(nyc3)
+```
+
+#### Storing all categorical variables as factors
+
+```{r categorical as factors}
+#Storing categorical variables as factors
+skim(nyc3)
+```
+
+#### Checking for Multicollinearity
+- Multicollinearity will weaken the model
+  - number_of_reviews and reviews_per_month are correlated at 55%
+    - Removing reviews_per_month
+
+```{r multicollinearity1}
+corrNYC <- nyc3
+#Table numeric variables
+corrNYCTable <- corrNYC %>% keep(is.numeric) %>% cor %>% view
+#Plot numeric variables v numeric variables
+corrNYC %>% keep(is.numeric) %>% cor %>% corrplot("upper", addCoef.col = "white", number.digits = 2, number.cex = 0.5, method="square", order="hclust", tl.srt=45, tl.cex = 0.8)
+invisible(view(corrNYCTable))
+```
+
+```{r attrition: removing highly correlated variable}
+#Removing reviews_per_month due to high correlation of is and number_of_reviews
+nyc4 <- select(nyc3, -c("reviews_per_month"))
+```
+
+#### Summary Review of Data Set
+
+```{r}
+summary(nyc4)
+```
+
+#### Removing outliers from minimum nights stay
+- Anything over 365 is more than a year and would be improbable
+- Removing any minimum nights metric over 365
+
+```{r}
+nyc4 <- nyc4[!(nyc4$minimum_nights > 365),]
+invisible(view(nyc4))
+```
+
+#### Examining VIFs
+- The below results show us there is no need to remove any variables
+
+```{r}
+full.model<-lm(price~.,data=nyc4)  # . means all variable not mpg
+vif(full.model)[,3]^2
+
+alias(lm(price~.,data=nyc4))
+```
+
+#### Reviewing Linearity with Numeric Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check}
+nyc4 %>% pairs()
+
+par(mfrow=c(2,2))
+plot(full.model)
+```
+
+#### Creating new Log price variable
+- Based on the above plots we may benefit from a transformation
+  - Log transforming price to create a log-linear regression
+
+```{r}
+log.nyc <- nyc4 %>% mutate(lprice=log(price))
+log.nyc <- select(log.nyc, -c("price"))
+invisible(log.nyc)
+```
+
+#### Examining VIFs of Log Price Variable
+
+```{r}
+log.full.model<-lm(lprice~.,data=log.nyc)  # . means all variable not mpg
+vif(log.full.model)[,3]^2
+
+alias(lm(lprice~.,data=log.nyc))
+```
+
+#### Reviewing Linearity with Independent and Logged Dependent (Price) Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r}
+log.nyc  %>% pairs() #[Add color]
+#%>% keep(is.numeric)
+par(mfrow=c(2,2))
+plot(log.full.model)
+```
+
+#### Log-log model
+- Due to lack of linearity trying to transform the independent variables to see if we can surface a linear relationship
+```{r}
+log.nyc.independent <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
+log.nyc.independent <- log.nyc.independent %>% mutate(lnights=log(minimum_nights))
+log.nyc.independent <- log.nyc.independent %>% mutate(llistings=log(calculated_host_listings_count))
+invisible(log.nyc.independent)
+
+log.nyc.independent <- select(log.nyc.independent, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count"))
+invisible(log.nyc.independent)
+```
+
+#### Examining VIFs of Log-Log Model
+
+```{r}
+log.full.model<-lm(lprice~.,data=log.nyc.independent)  # . means all variable not mpg
+vif(log.full.model)[,3]^2
+
+alias(lm(lprice~.,data=log.nyc.independent))
+```
+
+#### Reviewing Linearity with Logged Independent and Dependent Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r}
+log.nyc.independent  %>% pairs() #[Add color]
+#%>% keep(is.numeric)
+
+par(mfrow=c(2,2))
+plot(log.full.model)
+```
+
+#### Continuous Variable Manipulation
+- Since we are seeing large clouds of data but no linear trend, we are going to try binning the data to see if it will assist us in determining if there is a relationship between the continuous variables and log price
+
+#```{r}
+#data(nyc4)
+#nyc4$reviewsBin <- var.bin(nyc4$number_of_reviews, bins = 50)
+#nyc4
+
+#nyc4 %>% keep(is.numeric) %>% pairs() #[Add color]
+
+#par(mfrow=c(2,2))
+#plot(log.full.model)
+#```
