@@ -29,7 +29,7 @@ library(leaps)
 ## Question of Interest: what variables are used to predict price of a NYC Airbnb
 
 ```{r data prep}
-nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
+nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project_1/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
 head(nycraw)
 str(nycraw)
 ```
@@ -256,7 +256,7 @@ plot(nyc.categorical$room_type, nyc.categorical$price, xlab = "Room Type", ylab 
 
 #### Reviewing Linearity with Numeric Variables w/ Price > 400 Outliers Removed
 
-```{r linearity check w/ Price > 400 Outliers Removed}
+```{r linearity check w Price greater than 400 Outliers Removed}
 nyc.cat.model<-lm(price~.,data=nyc.categorical) 
 #nyc4 %>% pairs() No color model
 pairs(nyc.categorical,col=nyc.categorical$neighbourhood_group) #Color by neighborhood
@@ -268,7 +268,7 @@ plot(nyc.cat.model)
 #### Reviewing Linearity with Numeric Variables w/ Log-Linear model Price > 400 Outliers Removed
 - Still no obvious linearity
 
-```{r linearity check w/ Log-Linear model Price > 400 Outliers Removed}
+```{r linearity check w Log-Linear model Price greater than 400 Outliers Removed}
 log.nyc.outliers <- log.nyc[!(log.nyc$lprice > 400),]
 
 log.nyc.outliers.model<-lm(lprice~.,data=log.nyc.outliers) 
@@ -276,36 +276,6 @@ pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neig
 
 par(mfrow=c(2,2))
 plot(log.nyc.outliers.model)
-```
-
-#### Assumptions Check
-- Risduals are normally distributed
-  - Log-linear model has closest to normally distrubuted residuals from last plot
-  - Near normal distriution of residuals
-  - Envoking Central Limit Theorum due to such a large sample size
-- Constant variance
-  - Near normal QQ-plot
-
-```{r residuals, constant variance assumption}
-par(mfrow=c(2,2))
-plot(log.nyc.outliers.model)
-```
-
-- Independence
-  - Assumed
-- Multicollinearity
-  - Confirmed with VIFs and pairs plot that there is no mjultcollinearity occuring
-```{r multicollinearity assumption 2}
-vif(log.depend.model)[,3]^2
-```
-
-```{r multicollinearity assumption}
-pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neighborhood
-```
-
-- Removed all prices over 400 to help reduce data set and uncover any correlation that was present between the dependent varaibles and independent categorical variables
-```{r outliers assumption}
-#log.nyc.outliers <- log.nyc[!(log.nyc$lprice > 400),]
 ```
 
 #### Modeling
@@ -317,7 +287,7 @@ pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neig
     - In adding this complexity we are tryign to surface any possible linear variable interations that may contribute to our model
     - If these are surfaced we will go back and use graphical means to verify the model's discovery
 
-```{r full model check for linearity}
+```{r full model check for p-value significance}
 nyc.model = lm(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers)
 summary(nyc.model)
 ```
@@ -358,13 +328,45 @@ summary(nyc.exh)$rss
 summary(nyc.exh)$bic
 ```
 
-#### KNN or Random Forest
+#### Assumptions Check
+- Risduals are normally distributed
+  - Log-linear model has closest to normally distrubuted residuals from last plot
+  - Near normal distriution of residuals
+  - Envoking Central Limit Theorum due to such a large sample size
+- Constant variance
+  - Near normal QQ-plot
+
+```{r residuals, constant variance assumption}
+par(mfrow=c(2,2))
+plot(log.nyc.outliers.model)
+```
+
+- Independence
+  - Assumed
+- Multicollinearity
+  - Confirmed with VIFs and pairs plot that there is no mjultcollinearity occuring
+
+```{r multicollinearity assumption two}
+vif(log.depend.model)[,3]^2
+```
+
+```{r multicollinearity assumption}
+pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neighborhood
+```
+
+- Removed all prices over 400 to help reduce data set and uncover any correlation that was present between the dependent varaibles and independent categorical variables
+
+```{r outliers assumption}
+#log.nyc.outliers <- log.nyc[!(log.nyc$lprice > 400),]
+```
+
+#### MLR May Not Be The Best
 - Multiple linear regression is just one option in building a predictive model for a continuous response
 - We are seeing it as a bad option because
   - The true relationship between the response and predictors is NOT “linear”.  The relationships are complex.
-    - We have gotten close, but we have worked extremely hard in specifying our model and manipulate the raw data to surface a linear relationship
-    - This makes the interpretation into the real world difficult to translate and understand
+    - We have gotten close, but we have worked extremely hard in specifying our model and manipulating the raw data to surface a linear relationship
+    - This makes the interpretation into the real world application difficult to interpret
   - Since the above is true and our data is very large, we think that other methods such as Random Forest or K-NN would perform better.
     - These options are less time consuming because the model complexity is built into the lagorithm
     - We also do not have to specify how a relationship exists ahead of time
-- Since we see a strong relationship between the categorical variables and we have not yet learned Random Forest models, we move forward with a Two-Way ANOVA model to create a sound model to predict the price of a NYC AirBnB.
+- Since we see a strong relationship between the categorical variables, we move forward with a Two-Way ANOVA model to create a model way predict the price of a NYC AirBnB.
