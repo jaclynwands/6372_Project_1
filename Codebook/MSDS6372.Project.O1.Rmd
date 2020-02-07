@@ -165,6 +165,7 @@ plot(log.depend.model)
 
 #### Log-log model
 - Due to lack of linearity trying to transform the independent variables to see if we can surface a linear relationship
+
 ```{r created logged independent variables}
 log.indep.nyc <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
 log.indep.nyc <- log.indep.nyc %>% mutate(lnights=log(minimum_nights))
@@ -293,6 +294,7 @@ summary(nyc.model)
 ```
 
 #### Model selection attempts
+
 ```{r forward selection model}
 nyc.fwd = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers, method="forward",nvmax=20)
 summary(nyc.fwd)$adjr2
