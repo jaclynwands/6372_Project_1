@@ -1,0 +1,46 @@
+neighborhood w room type ,diff,lower,upper,padj
+Staten Island:Privateroom v Manhattan:Entirehome apt,-1.308051452,-1.42764963,-1.188453271,0.00000000
+Bronx:Privateroom v Manhattan:Entirehome apt,-1.301374474,-1.36932932,-1.233419629,0.00000000
+Queens:Privateroom v Manhattan:Entirehome apt,-1.182383432,-1.21599662,-1.148770249,0.00000000
+Brooklyn:Privateroom v Manhattan:Entirehome apt,-1.098796681,-1.12274506,-1.074848297,0.00000000
+Staten Island:Privateroom v Brooklyn:Entirehome apt,-1.029766569,-1.14956652,-0.909966618,0.00000000
+Bronx:Privateroom v Brooklyn:Entirehome apt,-1.02308959,-1.09139892,-0.954780263,0.00000000
+Queens:Privateroom v Brooklyn:Entirehome apt,-0.904098548,-0.93842273,-0.869774369,0.00000000
+Staten Island:Privateroom v Queens:Entirehome apt,-0.852562476,-0.97675019,-0.728374762,0.00000000
+Bronx:Privateroom v Queens:Entirehome apt,-0.845885497,-0.92162666,-0.770144332,0.00000000
+Brooklyn:Privateroom v Brooklyn:Entirehome apt,-0.820511797,-0.84544828,-0.795575312,0.00000000
+Manhattan:Privateroom v Manhattan:Entirehome apt,-0.757999709,-0.78370347,-0.732295953,0.00000000
+Queens:Privateroom v Queens:Entirehome apt,-0.726894455,-0.77431501,-0.679473897,0.00000000
+Staten Island:Privateroom v StatenIsland:Entirehome apt,-0.71406012,-0.8853816,-0.542738635,0.00000000
+Bronx:Privateroom v StatenIsland:Entirehome apt,-0.707383141,-0.84761576,-0.567150523,0.00000000
+Staten Island:Privateroom v Bronx:Entirehome apt,-0.704507541,-0.85069283,-0.558322254,0.00000000
+Bronx:Privateroom v Bronx:Entirehome apt,-0.697830562,-0.80592438,-0.589736741,0.00000000
+Brooklyn:Privateroom v Queens:Entirehome apt,-0.643307704,-0.68444635,-0.602169057,0.00000000
+Staten Island:Entirehome apt v Manhattan:Entirehome apt,-0.593991332,-0.71874313,-0.469239535,0.00000000
+Queens:Privateroom v StatenIsland:Entirehome apt,-0.5883921,-0.71558161,-0.461202586,0.00000000
+Queens:Privateroom v Bronx:Entirehome apt,-0.578839521,-0.66937272,-0.488306326,0.00000000
+StatenIsland:Privateroom v Manhattan:Privateroom,-0.550051743,-0.67025459,-0.429848901,0.00000000
+Brooklyn:Privateroom v StatenIsland:Entirehome apt,-0.504805348,-0.62978875,-0.379821944,0.00000000
+Brooklyn:Privateroom v Bronx:Entirehome apt,-0.495252769,-0.58265951,-0.407846029,0.00000000
+Manhattan:Privateroom v Brooklyn:Entirehome apt,-0.479714825,-0.50634162,-0.453088029,0.00000000
+Queens:Entirehome apt v Manhattan:Entirehome apt,-0.455488977,-0.49591852,-0.415059433,0.00000000
+Queens:Privateroom v Manhattan:Privateroom,-0.424383723,-0.46008869,-0.38867876,0.00000000
+Staten Island:Entirehome apt v Brooklyn:Entirehome apt,-0.315706449,-0.44065169,-0.190761204,0.00000000
+Manhattan:Privateroom v Queens:Entirehome apt,-0.302510732,-0.3446954,-0.260326063,0.00000000
+StatenIsland:Privateroom v Brooklyn:Privateroom,-0.209254772,-0.32909452,-0.089415023,0.00000150
+Queens:Entirehome apt v Brooklyn:Entirehome apt,-0.177204093,-0.21822666,-0.136181523,0.00000000
+Manhattan:Privateroom v StatenIsland:Entirehome apt,-0.164008377,-0.28933997,-0.038676779,0.00143050
+Manhattan:Privateroom v Bronx:Entirehome apt,-0.154455798,-0.2423597,-0.066551894,0.00000120
+Staten Island:Entirehome apt v Queens:Entirehome apt,-0.138502356,-0.26766069,-0.009344026,0.02420570
+StatenIsland:Privateroom v Queens:Privateroom,-0.12566802,-0.24780682,-0.003529221,0.03774000
+Queens:Privateroom v Brooklyn:Privateroom,-0.083586751,-0.11804958,-0.049123925,0.00000000
+Staten Island:Privateroom v Bronx:Privateroom,-0.006676979,-0.14234533,0.128991371,1.00000000
+Staten Island:Entirehome apt v Bronx:Entirehome apt,0.009552579,-0.14087822,0.159983374,1.00000000
+Queens:Privateroom v Bronx:Privateroom,0.118991042,0.04665832,0.191323761,0.00000860
+Queens:Entirehome apt v Bronx:Entirehome apt,0.148054935,0.05477599,0.241333878,0.00002260
+Brooklyn:Privateroom v Bronx:Privateroom,0.202577793,0.13419869,0.270956892,0.00000000
+Manhattan:Entirehome apt v Brooklyn:Entirehome apt,0.278284884,0.25453645,0.302033315,0.00000000
+Brooklyn:Entirehome apt v Bronx:Entirehome apt,0.325259028,0.23790686,0.412611195,0.00000000
+Manhattan:Privateroom v Brooklyn:Privateroom,0.340796972,0.31399168,0.367602259,0.00000000
+Manhattan:Privateroom v Bronx:Privateroom,0.543374765,0.47436129,0.612388236,0.00000000
+Manhattan:Entirehome apt v Bronx:Entirehome apt,0.603543911,0.51646867,0.690619155,0.00000000
