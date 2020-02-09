@@ -23,6 +23,13 @@ library(gridExtra)
 library(SamplingStrata)
 library(rbin)
 library(leaps)
+library(dplyr)
+library(ggplot2)
+library(geosphere)
+library(broom)
+library(plyr)
+library(devtools)
+options(scipen=999)
 ```
 
 # Objective 1:
@@ -36,18 +43,31 @@ str(nycraw)
 
 ## EDA to determine type of multiple linear regression to perform
 
+#### Determined that Times Square is a hot destination point. Used Lat long metrics to build a new metric with distance to Times Square
+
+```{r tsquare_distance metric}
+#Creating a new, tsquare_distance (distance to Times Square in miles)
+for (i in 1:nrow(nycraw)) {
+  n <- (distHaversine(c(nycraw$latitude[i], -nycraw$longitude[i]), c(40.7580, 73.9855)) / 1609.344)
+  nycraw$tsquare_distance[i] <- n
+}
+head(nycraw)
+```
+
 #### Removing logically irrelevant variables
 
 ```{r drop irrelevant variables}
-#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_reiview", "latitude", "longitude", "neighborhood","availability_365"
-nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood","availability_365"))
+#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
+nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood_group"))
 head(nyc2)
 ```
 
-#### Dependent Variable Check
+#### Zero Value Variable Check
 - Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
-```{r}
+- Checking on independent variables that have '0' as a value. Seeing that "availability_365" would mean the AirBnB isn't available at all, we are dropping those from our data set.
+```{r zero value variable check}
 nyc2 <- nyc2[!(nyc2$price==0),]
+nyc2 <- nyc2[!(nyc2$availability_365==0),]
 invisible(view(nyc2))
 ```
 
@@ -65,10 +85,10 @@ nrow(nyc3)
 
 #### Zero variance variable check - all show variance so remain in model
 
-```{r zero variable check}
+#```{r zero variable check}
 #Results show no zero variance variables, leave in all
-skim(nyc3)
-```
+#skim(nyc3)
+#```
 
 #### Storing all categorical variables as factors
 
@@ -77,7 +97,7 @@ skim(nyc3)
 skim(nyc3)
 ```
 
-#### Checking for Multicollinearity
+### Numerical v Numerical Multicollinearity
 - Multicollinearity will weaken the model
   - number_of_reviews and reviews_per_month are correlated at 55%
     - Removing reviews_per_month
@@ -102,6 +122,11 @@ nyc4 <- select(nyc3, -c("reviews_per_month"))
 summary(nyc4)
 ```
 
+#### Changing Price variable range
+```{r}
+nyc4 <- filter(nyc4, price >= 25 & price <= 400)
+```
+
 #### Removing outliers from minimum nights stay
 - Anything over 365 is more than a year and would be improbable
 - Removing any minimum nights metric over 365
@@ -111,26 +136,13 @@ nyc4 <- nyc4[!(nyc4$minimum_nights > 365),]
 invisible(view(nyc4))
 ```
 
-#### Examining VIFs
-- The below results show us there is no need to remove any variables
-
-```{r examining VIFs}
-full.model<-lm(price~.,data=nyc4)  # . means all variable not mpg
-vif(full.model)[,3]^2
-
-alias(lm(price~.,data=nyc4))
-```
-
 #### Reviewing Linearity with Numeric Variables
 - Curved relationships with the numeric variables
   - Could require a quadratic or logarithmic transformation
 
 ```{r linearity check}
 #nyc4 %>% pairs() No color model
-pairs(nyc4,col=nyc4$neighbourhood_group) #Color by neighborhood
-
-par(mfrow=c(2,2))
-plot(full.model)
+pairs(nyc4,col=nyc4$neighbourhood) #Color by neighborhood
 ```
 
 #### Creating new Log price variable
@@ -143,24 +155,12 @@ log.nyc <- select(log.nyc, -c("price"))
 invisible(log.nyc)
 ```
 
-#### Examining VIFs of Log Price Variable
-
-```{r exmaining log-linear VIFs}
-log.depend.model<-lm(lprice~.,data=log.nyc)  # . means all variable not mpg
-vif(log.depend.model)[,3]^2
-
-alias(lm(lprice~.,data=log.nyc))
-```
-
-#### Reviewing Linearity with Independent and Logged Dependent (Price) Variable
+#### Reviewing Linearity with Log-Linear model: Independent and Logged Dependent (Price) Variable
 - Curved relationships with the numeric variables
   - Could require a quadratic or logarithmic transformation
 
 ```{r linearity check of log-linear model}
-pairs(log.nyc,col=log.nyc$neighbourhood_group)
-
-par(mfrow=c(2,2))
-plot(log.depend.model)
+pairs(log.nyc,col=log.nyc$neighbourhood)
 ```
 
 #### Log-log model
@@ -170,19 +170,16 @@ plot(log.depend.model)
 log.indep.nyc <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
 log.indep.nyc <- log.indep.nyc %>% mutate(lnights=log(minimum_nights))
 log.indep.nyc <- log.indep.nyc %>% mutate(llistings=log(calculated_host_listings_count))
+log.indep.nyc <- log.indep.nyc %>% mutate(lavailablility=log(availability_365))
+log.indep.nyc <- log.indep.nyc %>% mutate(ltsqr=log(tsquare_distance))
 invisible(log.indep.nyc)
 
-log.indep.nyc <- select(log.indep.nyc, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count"))
+log.indep.nyc <- select(log.indep.nyc, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+# Checking for -inf logged results
 invisible(log.indep.nyc)
-```
-
-#### Examining VIFs of Log-Log Model
-
-```{r examining log-log VIFs}
-log.indep.model<-lm(lprice~.,data=log.indep.nyc)  # . means all variable not mpg
-vif(log.indep.model)[,3]^2
-
-alias(lm(lprice~.,data=log.indep.nyc))
+# Drop -inf log reults in lavailability
+log.indep.nyc<-log.indep.nyc[!(log.indep.nyc$lavailablility=="-Inf"),]
+invisible(log.indep.nyc)
 ```
 
 #### Reviewing Linearity with Logged Independent and Dependent Variables
@@ -190,23 +187,7 @@ alias(lm(lprice~.,data=log.indep.nyc))
   - Could require a quadratic or logarithmic transformation
 
 ```{r linearity check of log-log model}
-pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood_group) #Color by neighborhood
-
-par(mfrow=c(2,2))
-plot(log.indep.model)
-```
-
-#### Continuous Variable Manipulation
-- Since we are seeing large clouds of data but no linear trend with logged and unlogged data, we are going to move forward with binning the data to see if it will assist us in determining if there is a relationship between the continuous variables and log price
-
-```{r rbin}
-nyc5 <- rbin_winsorize(nyc4, price, number_of_reviews, 50, winsor_rate = 0.05)
-nyc5
-
-nyc4 %>% keep(is.numeric) %>% pairs() #[Add color]
-
-par(mfrow=c(2,2))
-plot(full.model)
+pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
 ```
 
 #### Continuous Variable Bin Manipulation
@@ -217,9 +198,10 @@ nyc.bins <- nyc4
 
 nyc.bins$reviewsBin <- var.bin(nyc.bins$number_of_reviews, bins = 50)
 nyc.bins$nightsBin <- var.bin(nyc.bins$minimum_nights, bins = 50)
+nyc.bins$availBin <- var.bin(nyc.bins$availability_365, bins = 50)
 nyc.bins$listBin <- var.bin(nyc.bins$calculated_host_listings_count, bins = 10)
 
-nyc.bins <- select(nyc.bins,-c("minimum_nights", "number_of_reviews", "calculated_host_listings_count"))
+nyc.bins <- select(nyc.bins,-c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365"))
 invisible(nyc.bins)
 ```
 
@@ -229,137 +211,156 @@ invisible(nyc.bins)
 ```{r linearity check of binned independent variables}
 nyc.bin.model <-lm(price~.,data=nyc.bins)
 #nyc.bins  %>% pairs() No color model
-pairs(nyc.bins,col=nyc.bins$neighbourhood_group) #Color by neighborhood
-
-par(mfrow=c(2,2))
-plot(nyc.bin.model)
+pairs(nyc.bins,col=nyc.bins$neighbourhood) #Color by neighborhood
 ```
 
 #### Explore potential correlation Neighborhood v Price
-- We have to this moment not be able to surface linearity relationships between our numerican independent varaibles and our dependt variable
+- We have to this moment not be able to surface linearity relationships between our numerican independent varaibles and our dependentt variable
 - Next we will check for correltaion of the categorical variables: room_type & neighbourhood_group
-- Without removing the ouliers of price above 400 it is near impossible to see if there is a difference per neighborhood. We have removed those prices above 400 to see if the 
 - We see a strong chance of correlation between Price and Neighbourhood Group
 
 ```{r}
-nyc.categorical <- nyc4[!(nyc4$price > 400),]
-nrow(nyc4)
-nrow(nyc.categorical)
-plot(nyc.categorical$neighbourhood_group, nyc.categorical$price, xlab = "Neighbourhood Group", ylab = "Price", title = "Price v Neighbourhood Group Correlation Check", col=c(7,32,52,82,107)) 
+plot(nyc4$neighbourhood, nyc4$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check", col=c(7,32,52,82,107)) 
+```
+
+- Narrowing down neighborhoods (randomly) to confirm neighbourhood is a significant categorical metrics to keep in MLR
+
+```{r}
+nycNeighborhood <- ddply(nyc4,.(neighbourhood), function(x) x[sample(nrow(x),1),])
+
+plot(nycNeighborhood$neighbourhood, nycNeighborhood$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check") 
 ```
 
 #### Explore potential correlation Room Type v Price
 - We see a strong chance of corerlation between Price and Room Type
 
 ```{r}
-plot(nyc.categorical$room_type, nyc.categorical$price, xlab = "Room Type", ylab = "Price", title = "Price v Room Type Correlation Check", col=c(7,32,52)) 
-```
-
-#### Reviewing Linearity with Numeric Variables w/ Price > 400 Outliers Removed
-
-```{r linearity check w Price greater than 400 Outliers Removed}
-nyc.cat.model<-lm(price~.,data=nyc.categorical) 
-#nyc4 %>% pairs() No color model
-pairs(nyc.categorical,col=nyc.categorical$neighbourhood_group) #Color by neighborhood
-
-par(mfrow=c(2,2))
-plot(nyc.cat.model)
-```
-
-#### Reviewing Linearity with Numeric Variables w/ Log-Linear model Price > 400 Outliers Removed
-- Still no obvious linearity
-
-```{r linearity check w Log-Linear model Price greater than 400 Outliers Removed}
-log.nyc.outliers <- log.nyc[!(log.nyc$lprice > 400),]
-
-log.nyc.outliers.model<-lm(lprice~.,data=log.nyc.outliers) 
-pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neighborhood
-
-par(mfrow=c(2,2))
-plot(log.nyc.outliers.model)
+plot(nyc4$room_type, nyc4$price, xlab = "Room Type", ylab = "Price", title = "Price v Room Type Correlation Check", col=c(7,32,52)) 
 ```
 
 #### Modeling
 - We are not seeing any linear correlation between the dependent and independent numeric varaibles
-- We are seeing a strong chance of linear correlation between the dependent and independent categorical variables
+  - We have tried: linear regression, log-linear regression transformation, log-log regression transformation, binning, and outlier drop.
+- We are seeing a strong linear correlation between the dependent and independent categorical variables
 - We have surfaced the best residuals assumptions matched in a log-linear model
   - Due to this we are moving forward with modeling a log-linear model with singular variables as well as all interaction terms
   - This is to add complexity to our model, we have a low number of varaibles to select from
     - In adding this complexity we are tryign to surface any possible linear variable interations that may contribute to our model
     - If these are surfaced we will go back and use graphical means to verify the model's discovery
 
-```{r full model check for p-value significance}
-nyc.model = lm(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers)
+```{r full model check}
+nyc.model = lm(lprice~neighbourhood + room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + tsquare_distance, data=log.nyc)
 summary(nyc.model)
+
+#Surfacing only significant neighborhoods
+nyc.model2 = tidy(nyc.model)
+options(scipen = 999)
+invisible(nyc.model2)
+nyc.modeldf <- nyc.model2[nyc.model2$p.value < 0.05,]
+invisible(view(nyc.modeldf))
+```
+
+```{r}
+#would reducing the data set to just sig values help?
 ```
 
 #### Model selection attempts
 
-```{r forward selection model}
-nyc.fwd = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers, method="forward",nvmax=20)
-summary(nyc.fwd)$adjr2
-summary(nyc.fwd)$rss
-summary(nyc.fwd)$bic
+```{r intuitive model}
+#To be built and provided by Reagan, there should include about 4 or so intuitive models and we take the one with the best Adj rsquared
 ```
 
-```{r forward selection model 2}
-nyc.fwd2 = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count, data=log.nyc.outliers, method="forward",nvmax=50)
-summary(nyc.fwd2)$adjr2
-summary(nyc.fwd2)$rss
-summary(nyc.fwd2)$bic
+```{r forward selection model}
+nyc.fwd = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method = "forward", data=log.nyc, nvmax=20)
+summary(nyc.fwd)$adjr2
+
+
+
+#predict.regsubsets =function (object , newdata ,id ,...){
+#  form=as.formula (object$call [[2]])
+#  mat=model.matrix(form ,newdata )
+#  coefi=coef(object ,id=id)
+#  xvars=names(coefi)
+#  mat[,xvars]%*%coefi
+#}
+
+#testASE<-c()
+#note my index is to 20 since that what I set it in regsubsets
+#for (i in 1:20){
+#  predictions<-predict.regsubsets(object=reg.fwd,newdata=test,id=i) 
+#  testASE[i]<-mean((log(test$AvgWinnings)-predictions)^2)
+#}
+
+#par(mfrow=c(1,1))
+#plot(1:20,testASE,type="l",xlab="# of predictors",ylab="test vs train ASE",ylim=c(0.2,0.8))
+
+#index<-which(testASE==min(testASE))
+#points(index,testASE[index],col="red",pch=10)
+#rss<-summary(reg.fwd)$rss
+#lines(1:20,rss/100,lty=3,col="blue")  #Dividing by 100 since ASE=RSS/sample size
+
+#coef(reg.final,XXXX)
+
+#final.model<-lm(log(AvgWinnings)~Greens+AvgPutts+Save,data=golf)
+#summary(final.model)
 ```
 
 ```{r backward selection model}
-nyc.bck = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers, method="backward",nvmax=20)
+nyc.bck = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method="backward", data=log.nyc, nvmax=20)
 summary(nyc.bck)$adjr2
-summary(nyc.bck)$rss
-summary(nyc.bck)$bic
-```
-
-```{r exhaustive selection model}
-nyc.exh = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers, method="exhaustive",nvmax=20)
-summary(nyc.exh)$adjr2
-summary(nyc.exh)$rss
-summary(nyc.exh)$bic
+#summary(nyc.bck)$rss
+#summary(nyc.bck)$bic
 ```
 
 ```{r seqrep selection model}
-nyc.seq = regsubsets(lprice~neighbourhood_group + room_type + neighbourhood_group:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count, data=log.nyc.outliers, method="seqrep",nvmax=20)
-summary(nyc.exh)$adjr2
-summary(nyc.exh)$rss
-summary(nyc.exh)$bic
+nyc.seq = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method="seqrep", data=log.nyc, nvmax=20)
+summary(nyc.seq)$adjr2
+#summary(nyc.seq)$rss
+#summary(nyc.seq)$bic
 ```
 
-#### Assumptions Check
-- Risduals are normally distributed
-  - Log-linear model has closest to normally distrubuted residuals from last plot
-  - Near normal distriution of residuals
-  - Envoking Central Limit Theorum due to such a large sample size
-- Constant variance
-  - Near normal QQ-plot
+```{r exhaustive selection model}
+#Due to an exhaustive method being too large. We are commenting out this model and moving forward with selective methods that will run
+#nyc.exh = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, data=log.nyc, nvmax=20)
+#summary(nyc.exh)$adjr2
+#summary(nyc.exh)$rss
+#summary(nyc.exh)$bic
+```
 
-```{r residuals, constant variance assumption}
+#### Assumptions Check on Intuitive Model
+- Residuals near normally distributed but still skewed
+- Envoking Central Limit Theorum due to such a large sample size
+- Constant Variance
+  - The QQ Plot shows an extreme deviation from normality. Even with the Central Limit Theorum we do not feel comforablte moving forward.
+
+```{r Assumptions Check on Intuitive Model}
 par(mfrow=c(2,2))
-plot(log.nyc.outliers.model)
+full.model<-lm(price~.,data=nyc4)
+plot(full.model)
+```
+
+#### Assumptions Check on Log-Linear Intuitive Model
+- Risduals are near normally distributed with them being slightly off
+  - Envoking Central Limit Theorum due to such a large sample size
+  - Passed
+- Constant variance
+  - The QQ-plot is showing much less departure from normality
+  - Passed
+
+```{r Assumptions Check on Log-Linear Intuitive Model}
+par(mfrow=c(2,2))
+log.depend.model<-lm(lprice~.,data=log.nyc)
+plot(log.depend.model)
 ```
 
 - Independence
   - Assumed
+  - Passed
 - Multicollinearity
-  - Confirmed with VIFs and pairs plot that there is no mjultcollinearity occuring
+  - We are seeing a high VIF for our distance to Times Square 
 
-```{r multicollinearity assumption two}
+```{r Multicollinearity Assumption on Log-Linear Intuitive Model}
 vif(log.depend.model)[,3]^2
-```
-
-```{r multicollinearity assumption}
-pairs(log.nyc.outliers, col=log.nyc.outliers$neighbourhood_group) #Color by neighborhood
-```
-
-- Removed all prices over 400 to help reduce data set and uncover any correlation that was present between the dependent varaibles and independent categorical variables
-
-```{r outliers assumption}
-#log.nyc.outliers <- log.nyc[!(log.nyc$lprice > 400),]
 ```
 
 #### MLR May Not Be The Best
