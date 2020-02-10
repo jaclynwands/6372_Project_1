@@ -22,31 +22,54 @@ library(car)
 library(ISLR)
 library(ggplot2)
 library(gridExtra)
+library(SamplingStrata)
+library(rbin)
+library(leaps)
+library(dplyr)
+library(ggplot2)
+library(geosphere)
+library(broom)
+library(plyr)
+library(devtools)
+options(scipen=999)
 ```
 
-# Objective 1:
-## Question of Interest: what variables are used to predict price of a NYC Airbnb
+# Objective 2 EDA:
 
 ```{r data prep}
 nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
 head(nycraw)
 str(nycraw)
+nrow(nycraw)
 ```
 
 ## EDA to determine type of multiple linear regression to perform
 
+#### Determined that Times Square is a hot destination point. Used Lat long metrics to build a new metric with distance to Times Square
+
+```{r tsquare_distance metric}
+#Creating a new, tsquare_distance (distance to Times Square in miles)
+for (i in 1:nrow(nycraw)) {
+  n <- (distHaversine(c(nycraw$latitude[i], -nycraw$longitude[i]), c(40.7580, 73.9855)) / 1609.344)
+  nycraw$tsquare_distance[i] <- n
+}
+head(nycraw)
+```
+
 #### Removing logically irrelevant variables
 
 ```{r drop irrelevant variables}
-#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_reiview", "latitude", "longitude", "neighborhood","availability_365"
-nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood","availability_365"))
+#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
+nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood_group"))
 head(nyc2)
 ```
 
-#### Dependent Variable Check
+#### Zero Value Variable Check
 - Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
-```{r}
+- Checking on independent variables that have '0' as a value. Seeing that "availability_365" would mean the AirBnB isn't available at all, we are dropping those from our data set.
+```{r zero value variable check}
 nyc2 <- nyc2[!(nyc2$price==0),]
+nyc2 <- nyc2[!(nyc2$availability_365==0),]
 invisible(view(nyc2))
 ```
 
@@ -62,13 +85,6 @@ nyc3 <- na.omit(nyc2)
 nrow(nyc3)
 ```
 
-#### Zero variance variable check - all show variance so remain in model
-
-```{r zero variable check}
-#Results show no zero variance variables, leave in all
-skim(nyc3)
-```
-
 #### Storing all categorical variables as factors
 
 ```{r categorical as factors}
@@ -76,7 +92,7 @@ skim(nyc3)
 skim(nyc3)
 ```
 
-#### Checking for Multicollinearity
+### Numerical v Numerical Multicollinearity
 - Multicollinearity will weaken the model
   - number_of_reviews and reviews_per_month are correlated at 55%
     - Removing reviews_per_month
@@ -97,70 +113,158 @@ nyc4 <- select(nyc3, -c("reviews_per_month"))
 
 #### Summary Review of Data Set
 
-```{r}
+```{r summary of dataset}
 summary(nyc4)
+```
+
+#### Changing Price variable range
+```{r}
+nyc4 <- filter(nyc4, price >= 25 & price <= 400)
 ```
 
 #### Removing outliers from minimum nights stay
 - Anything over 365 is more than a year and would be improbable
 - Removing any minimum nights metric over 365
 
-```{r}
+```{r removeing outliers of nights stay}
 nyc4 <- nyc4[!(nyc4$minimum_nights > 365),]
 invisible(view(nyc4))
 ```
 
-#### Examining VIFs
-- The below results show us there is no need to remove any variables
+#### Reviewing Linearity with Numeric Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
 
-```{r}
-full.model<-lm(price~.,data=nyc4)  # . means all variable not mpg
-vif(full.model)[,3]^2
-
-alias(lm(price~.,data=nyc4))
+```{r linearity check}
+#nyc4 %>% pairs() No color model
+pairs(nyc4,col=nyc4$neighbourhood) #Color by neighborhood
 ```
 
-# Question 2
+#### Creating new Log price variable
+- Based on the above plots we may benefit from a transformation
+  - Log transforming price to create a log-linear regression
 
-## 2-Way ANOVA Analysis
+```{r create logged dependent variable}
+log.nyc <- nyc4 %>% mutate(lprice=log(price))
+log.nyc <- select(log.nyc, -c("price"))
+invisible(log.nyc)
+```
+
+#### Reviewing Linearity with Log-Linear model: Independent and Logged Dependent (Price) Variable
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check of log-linear model}
+pairs(log.nyc,col=log.nyc$neighbourhood)
+```
+
+#### Log-log model
+- Due to lack of linearity trying to transform the independent variables to see if we can surface a linear relationship
+
+```{r created logged independent variables}
+log.indep.nyc <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
+log.indep.nyc <- log.indep.nyc %>% mutate(lnights=log(minimum_nights))
+log.indep.nyc <- log.indep.nyc %>% mutate(llistings=log(calculated_host_listings_count))
+log.indep.nyc <- log.indep.nyc %>% mutate(lavailablility=log(availability_365))
+log.indep.nyc <- log.indep.nyc %>% mutate(ltsqr=log(tsquare_distance))
+invisible(log.indep.nyc)
+
+log.indep.nyc <- select(log.indep.nyc, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+# Checking for -inf logged results
+invisible(log.indep.nyc)
+# Drop -inf log reults in lavailability
+log.indep.nyc<-log.indep.nyc[!(log.indep.nyc$lavailablility=="-Inf"),]
+invisible(log.indep.nyc)
+```
+
+#### Reviewing Linearity with Logged Independent and Dependent Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check of log-log model}
+pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
+```
+
+#### Continuous Variable Bin Manipulation
+- Since we are seeing large clouds of data but no linear trend with logged and unlogged data, we are going to move forward with binning the data to see if it will assist us in determining if there is a relationship between the continuous variables and log price
+
+```{r var.bin}
+nyc.bins <- nyc4
+
+nyc.bins$reviewsBin <- var.bin(nyc.bins$number_of_reviews, bins = 50)
+nyc.bins$nightsBin <- var.bin(nyc.bins$minimum_nights, bins = 50)
+nyc.bins$availBin <- var.bin(nyc.bins$availability_365, bins = 50)
+nyc.bins$listBin <- var.bin(nyc.bins$calculated_host_listings_count, bins = 10)
+nyc.bins$tsquBin <- var.bin(nyc.bins$tsquare_distance, bins = 20)
+
+nyc.bins <- select(nyc.bins,-c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+invisible(nyc.bins)
+```
+
+#### Reviewing Linearity with Binned Indepedent Variables
+- No linearity is presenting itself with a binned approach of the independent variables
+
+```{r linearity check of binned independent variables}
+nyc.bin.model <-lm(price~.,data=nyc.bins)
+#nyc.bins  %>% pairs() No color model
+pairs(nyc.bins,col=nyc.bins$neighbourhood) #Color by neighborhood
+```
+
+#### Explore potential correlation Neighborhood v Price
+- We have to this moment not be able to surface linearity relationships between our numerican independent varaibles and our dependentt variable
+- Next we will check for correltaion of the categorical variables: room_type & neighbourhood_group
+- We see a strong chance of correlation between Price and Neighbourhood Group
+
+```{r}
+plot(nyc4$neighbourhood, nyc4$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check", col=c(7,32,52,82,107)) 
+```
+
+- Narrowing down neighborhoods (randomly) to confirm neighbourhood is a significant categorical metrics to keep in MLR
+
+```{r}
+nycNeighborhood <- ddply(nyc4,.(neighbourhood), function(x) x[sample(nrow(x),1),])
+
+plot(nycNeighborhood$neighbourhood, nycNeighborhood$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check") 
+```
+
+#### Explore potential correlation Room Type v Price
+- We see a strong chance of corerlation between Price and Room Type
+
+```{r}
+plot(nyc4$room_type, nyc4$price, xlab = "Room Type", ylab = "Price", title = "Price v Room Type Correlation Check", col=c(7,32,52)) 
+```
+
+#### Modeling
+- We are not seeing any linear correlation between the dependent and independent numeric varaibles
+  - We have tried: linear regression, log-linear regression transformation, log-log regression transformation, binning, and outlier drop.
+- We are seeing a strong linear correlation between the dependent and independent categorical variables
+- We have surfaced the best residuals assumptions matched in a log-linear model
+  - Due to these discoveries we are moving forward with a Two-Way ANOVA in order to create the strongest model
+- The number of Neighborhoods is so high deriving any sort of practical significance in a two-way ANOVA would be too difficult. 
+  - Changing our selected variables to Neighbourhod_Group and room_type
+
+#### Clean data for Two-Way ANOVA
+
+```{r data prep2}
+nyc.anova.raw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
+head(nyc.anova.raw)
+nyc.anova.raw2 <- select(nyc.anova.raw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood", "minimum_nights", "number_of_reviews", "last_review", "reviews_per_month", "calculated_host_listings_count", "availability_365"))
+head(nyc.anova.raw2)
+
+nyc.anova.raw2 <- filter(nyc.anova.raw2, price >= 25 & price <= 400)
+invisible(view(nyc.anova.raw2))
+```
+  
+## Start 2-Way ANOVA Analysis
 - In completing this project with the tools learned in Unit 3 - we will perform a 2-Way ANOVA analysis.
-
-```{r drop numeric values}
-nyc.anova <- nyc4 %>% select(-c("number_of_reviews", "calculated_host_listings_count", "minimum_nights"))
-head(nyc.anova)
-invisible(view(nyc.anova))
-```
-
-#### Unbalanced Data
-- In reviewing the data we see unbalanced data between the Shared room, Private room, and Entire home/apt indepednet variable levels
-- Comapring a shared room leve to a private room or home seems logically irrelevent
-- Removing shared room variable
-- By removing this leve this model will no longer used for a shared room level of the room_type variable
-  - Include this in the conclusion/caveat in scope of inference
-
-```{r}
-#Reviewing data levels of room_types
-nyc.home <- nyc.anova[(nyc.anova$room_type=="Entire home/apt"),]
-nrow(nyc.home)
-
-nyc.private <- nyc.anova[(nyc.anova$room_type=="Private room"),]
-nrow(nyc.private)
-
-nyc.shared <- nyc.anova[(nyc.anova$room_type=="Shared room"),]
-nrow(nyc.shared)
-```
-
-```{r}
-#Making final data set with only Private room & Entire home/apt
-nyc.anova <- nyc.anova[!(nyc.anova$room_type=="Shared room"),]
-invisible(nyc.anova)
-```
 
 #### Summary Statistics Table
 - Creating Mean, SD, SE, Min, Max, and IQR
 - Table of graphable statistics
 
 ```{r attach data create function sumstats table}
+nyc.anova <- nyc.anova.raw2
+
 #Attaching the data set
 attach(nyc.anova)
 #Creating a function
@@ -194,7 +298,7 @@ ggplot(nycsumstats,aes(x=room_type,y=Mean,group=neighbourhood_group,colour=neigh
 - QQ Plot for assumption assessment
   - Show a curve, needs transformation
   
-```{r nonadditive model fit}
+```{r nonadditive model assumptions check}
 #The following code fits the nonadditive two way anova model and then produces the first the main residual diagnostics for assumption checking
 nyc.model.fit<-aov(price~neighbourhood_group+room_type+neighbourhood_group:room_type,data=nyc.anova)
 
@@ -214,12 +318,14 @@ nyc.plot3 <- ggplot(nyc.fits, aes(x=residuals)) +
 grid.arrange(nyc.plot1, nyc.plot2, nyc.plot3, ncol=3)
 ```
 
+```{r nonadditive assumptions check 2}
+par(mfrow=c(2,2))
+plot(nyc.model.fit)
+```
+
 #### Log transformation on price
 
 ```{r log transformation on price}
-#Cannot log zero values, must remove from price variable
-nyc.anova <- nyc.anova[!(nyc.anova$price == 0),]
-#Auto3 <- Auto[!(Auto$cylinders == 3),]
 #Transforming price to logged variable
 nyc.log.anova <- nyc.anova %>% mutate(lprice=log(price))
 #view(nyc.final)
@@ -230,7 +336,7 @@ nyc.log.anova <- nyc.anova %>% mutate(lprice=log(price))
 - QQ Plot: there is still some slight departure from normality, but again this is acceptable to move forward with our model
 - DON'T FORGET TO MENTION CLT - Central Limit Theorum
 
-```{r assumptions on log price}
+```{r nonadditive log assumptions check}
 nyc.model.fit.log<-aov(lprice~neighbourhood_group+room_type+neighbourhood_group:room_type,data=nyc.log.anova)
 
 nyc.fits.log <- data.frame(fitted.values=nyc.model.fit.log$fitted.values,residuals=nyc.model.fit.log$residuals)
@@ -249,6 +355,11 @@ nyc.logplot3 <- ggplot(nyc.fits.log, aes(x=residuals)) +
 grid.arrange(nyc.logplot1, nyc.logplot2, nyc.logplot3, ncol=3)
 ```
 
+par(mfrow=c(2,2))
+```{r non additive log assumptions check2}
+plot(nyc.model.fit.log)
+```
+
 #### Outliers
 - Since there are not singular points that are aggressively skewing the data, these outliers aren't considered unique or affecting the model in a way that would not be logical.
 - Choose to leave all low and high end metrics since the model should take these into account
@@ -257,19 +368,71 @@ grid.arrange(nyc.logplot1, nyc.logplot2, nyc.logplot3, ncol=3)
 - From the below F-test table we can see that neighborhood_group, room_type, as well as their interaction are all statistically significant for this model
 - The type-3 sums of squares F-test is provided below. The test for an interaction is not significant (F-stat: 12.493 p-value < .0001). Therefore, we can conclude that the potential changes in AirBnB price for one of the factors does depend on the other.
 
-```{r}
+```{r Ftest}
+Anova(nyc.model.fit, type = 3)
+```
+
+```{r log Ftest}
 Anova(nyc.model.fit.log,type=3)
 ```
 
-#### Multiple Test Technique: Tukey-Kramer
+```{r ftest CIs}
+#Confidence Intervals for F Test
+confint(nyc.model.fit.log)
+```
+
+#### Multiple Test Technique on No Transformation: Tukey-Kramer
 - From the F-test table we can see that all current variables are statistically significnat at the 0.05 alpha level
 - Move forward with the Tukey-Kramer to discover what factors and/or combinations contribute to predicting the price of a NYC AirBnB
 
-```{r}
-nyc.anova.diff <- TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95)
+```{r adjp tukey}
+nyc.anova.diff <- TukeyHSD(nyc.model.fit,"neighbourhood_group:room_type", conf.level = .95)
 nyc.anova.diff
 ```
 
-```{r}
-plot(TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95))
+```{r adjup tukey graph}
+plot(TukeyHSD(nyc.model.fit,"neighbourhood_group:room_type", conf.level = .95))
+```
+
+```{r sig pvalues}
+nyc.anova.diff2 = tidy(nyc.anova.diff)
+colnames(nyc.anova.diff2)[3] <- "diff"
+invisible(view(nyc.anova.diff2))
+
+nyc.anova.diffdf <- nyc.anova.diff2[nyc.anova.diff2$adj.p.value <0.05,]
+nyc.anova.diffdf <- nyc.anova.diffdf[order(nyc.anova.diffdf$diff),]
+nyc.anova.diffdf
+```
+
+#### Multiple Test Technique on Log Transformationl: Tukey-Kramer
+- From the F-test table we can see that all current variables are statistically significnat at the 0.05 alpha level
+- Move forward with the Tukey-Kramer to discover what factors and/or combinations contribute to predicting the price of a NYC AirBnB
+
+```{r log tukey pvalues}
+#nyc.anova.log.diff <- TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95)
+#nyc.anova.log.diff
+```
+
+```{r log tukey plot CI}
+#plot(TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95))
+```
+
+#### Back Transformation
+- To keep the data easily interpretable we have moved our nyc.anova.diff results into a data frame and are now going to back transform the diff and upper and lower confidence interval results.
+
+```{r log back transformation}
+#nyc.anova.log.diff2 = tidy(nyc.anova.log.diff)
+#colnames(nyc.anova.log.diff2)[3] <- "diff"
+#invisible(view(nyc.anova.log.diff2))
+
+#nyc.anova.log.diffdf <- nyc.anova.log.diff2[nyc.anova.log.diff2$adj.p.value <0.05,]
+#invisible(yc.anova.log.diffdf)
+
+#ConfInt_Diff_Backlog <- yc.anova.log.diffdf %>% mutate(Tdiff = exp(diff))
+#ConfInt_Diff_Backlog <- ConfInt_Diff_Backlog %>% mutate(Tlow = exp(conf.low))
+#ConfInt_Diff_Backlog <- ConfInt_Diff_Backlog %>% mutate(Thigh = exp(conf.high))
+
+#ConfInt_Diff_Backlog <- select(ConfInt_Diff_Backlog, -c("diff", "conf.low", "conf.high"))
+#ConfInt_Diff_Backlog <- ConfInt_Diff_Backlog[order(-ConfInt_Diff_Backlog$Tdiff),]
+#ConfInt_Diff_Backlog
 ```
