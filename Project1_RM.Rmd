@@ -3,18 +3,24 @@ title: "Project1_RM"
 output: html_document
 ---
 
+Loading libraries and settings
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ggplot2)
 library(geosphere)
-
 options(scipen=999)
+options(max.print=1000000)
 ```
 
+Exploratory Data Analysis
 ```{r}
 knitr::opts_chunk$set(echo = TRUE)
-airbnb <-read.csv(file="/Users/reagan/Documents/_SMU/Spring_2020/Applied_Statistics/Applied_Stats_Project/Project_1/AB_NYC_2019.csv",header=TRUE)
+#MAC
+#airbnb <- read.csv(file="/Users/reagan/Documents/_SMU/Spring_2020/Applied_Statistics/Applied_Stats_Project/Project_1/AB_NYC_2019.csv",header=TRUE)
+
+#PC
+airbnb <- read.csv(file="C:/Users/EREAMEA/Documents/_SMU/Applied Statistics/Semester Project/AB_NYC_2019.csv",header=TRUE)
 
 airbnb <- filter(airbnb, substr(last_review, 1, 4) %in% c('2017', '2018', '2019'))
 
@@ -44,9 +50,39 @@ airbnb_PR <- filter(airbnb, room_type == "Private room")
 airbnb_SR <- filter(airbnb, room_type == "Shared room")
 ```
 
+Full data set regression fit with interaction term, no transformation
 ```{r}
-fit <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = airbnb)
+fit <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = airbnb)
 summary(fit)
 plot(fit)
+```
+
+Full data set regression fit with interaction term, log - linear transformation
+```{r}
+fit_log <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = airbnb)
+summary(fit_log)
+plot(fit_log)
 ``` 
+
+Entire home/apt data set regression fit, log - linear transformation
+```{r}
+fit_EH <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood, data = airbnb_EH)
+summary(fit_EH)
+plot(fit_EH)
+```
+
+Private room data set regression fit, log - linear transformation
+```{r}
+fit_PR <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood, data = airbnb_EH)
+summary(fit_EH)
+plot(fit_PR)
+```
+
+Shared room data set regression fit, log - linear transformation
+```{r}
+fit_SR <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood, data = airbnb_EH)
+summary(fit_SR)
+plot(fit_SR)
+```
+
 
