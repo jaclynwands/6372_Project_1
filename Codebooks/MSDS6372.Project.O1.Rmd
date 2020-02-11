@@ -1,0 +1,384 @@
+---
+title: "MSDS 6372 Project 1 Objective 1"
+author: "Jaclyn A Coate"
+date: "2/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(mice)
+library(skimr)
+library(corrplot)
+library(car)
+library(ISLR)
+library(ggplot2)
+library(gridExtra)
+library(SamplingStrata)
+library(rbin)
+library(leaps)
+library(dplyr)
+library(ggplot2)
+library(geosphere)
+library(broom)
+library(plyr)
+library(devtools)
+library(leaps)
+options(scipen=999)
+```
+
+# Objective 1:
+## Question of Interest: what variables are used to predict price of a NYC Airbnb
+
+```{r data prep}
+nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project_1/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
+head(nycraw)
+str(nycraw)
+```
+
+## EDA to determine type of multiple linear regression to perform
+
+#### Determined that Times Square is a hot destination point. Used Lat long metrics to build a new metric with distance to Times Square
+
+```{r tsquare_distance metric}
+#Creating a new, tsquare_distance (distance to Times Square in miles)
+for (i in 1:nrow(nycraw)) {
+  n <- (distHaversine(c(nycraw$latitude[i], -nycraw$longitude[i]), c(40.7580, 73.9855)) / 1609.344)
+  nycraw$tsquare_distance[i] <- n
+}
+head(nycraw)
+```
+
+#### Removing logically irrelevant variables
+
+```{r drop irrelevant variables}
+#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
+nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood_group"))
+head(nyc2)
+```
+
+#### Zero Value Variable Check
+- Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
+- Checking on independent variables that have '0' as a value. Seeing that "availability_365" would mean the AirBnB isn't available at all, we are dropping those from our data set.
+```{r zero value variable check}
+nyc2 <- nyc2[!(nyc2$price==0),]
+nyc2 <- nyc2[!(nyc2$availability_365==0),]
+invisible(view(nyc2))
+```
+
+#### NA Evaluation and Drop
+
+```{r NA eval}
+#Checking for NAs
+md.pattern(nyc2)
+nrow(nyc2)
+#Drop NAs that are present
+nyc3 <- na.omit(nyc2)
+#Confirming NA drop
+nrow(nyc3)
+```
+
+#### Zero variance variable check - all show variance so remain in model
+
+#```{r zero variable check}
+#Results show no zero variance variables, leave in all
+#skim(nyc3)
+#```
+
+#### Storing all categorical variables as factors
+
+```{r categorical as factors}
+#Storing categorical variables as factors
+skim(nyc3)
+```
+
+### Numerical v Numerical Multicollinearity
+- Multicollinearity will weaken the model
+  - number_of_reviews and reviews_per_month are correlated at 55%
+    - Removing reviews_per_month
+
+```{r multicollinearity1}
+corrNYC <- nyc3
+#Table numeric variables
+corrNYCTable <- corrNYC %>% keep(is.numeric) %>% cor %>% view
+#Plot numeric variables v numeric variables
+corrNYC %>% keep(is.numeric) %>% cor %>% corrplot("upper", addCoef.col = "white", number.digits = 2, number.cex = 0.5, method="square", order="hclust", tl.srt=45, tl.cex = 0.8)
+invisible(view(corrNYCTable))
+```
+
+```{r attrition: removing highly correlated variable}
+#Removing reviews_per_month due to high correlation of is and number_of_reviews
+nyc4 <- select(nyc3, -c("reviews_per_month"))
+```
+
+#### Summary Review of Data Set
+
+```{r summary of dataset}
+summary(nyc4)
+```
+
+#### Changing Price variable range
+```{r}
+nyc4 <- filter(nyc4, price >= 25 & price <= 400)
+```
+
+#### Removing outliers from minimum nights stay
+- Anything over 365 is more than a year and would be improbable
+- Removing any minimum nights metric over 365
+
+```{r removeing outliers of nights stay}
+nyc4 <- nyc4[!(nyc4$minimum_nights > 365),]
+invisible(view(nyc4))
+```
+
+#### Reviewing Linearity with Numeric Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check}
+#nyc4 %>% pairs() No color model
+pairs(nyc4,col=nyc4$neighbourhood) #Color by neighborhood
+```
+
+#### Creating new Log price variable
+- Based on the above plots we may benefit from a transformation
+  - Log transforming price to create a log-linear regression
+
+```{r create logged dependent variable}
+log.nyc <- nyc4 %>% mutate(lprice=log(price))
+log.nyc <- select(log.nyc, -c("price"))
+invisible(log.nyc)
+```
+
+#### Reviewing Linearity with Log-Linear model: Independent and Logged Dependent (Price) Variable
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check of log-linear model}
+pairs(log.nyc,col=log.nyc$neighbourhood)
+```
+
+#### Log-log model
+- Due to lack of linearity trying to transform the independent variables to see if we can surface a linear relationship
+
+```{r created logged independent variables}
+log.indep.nyc <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
+log.indep.nyc <- log.indep.nyc %>% mutate(lnights=log(minimum_nights))
+log.indep.nyc <- log.indep.nyc %>% mutate(llistings=log(calculated_host_listings_count))
+log.indep.nyc <- log.indep.nyc %>% mutate(lavailablility=log(availability_365))
+log.indep.nyc <- log.indep.nyc %>% mutate(ltsqr=log(tsquare_distance))
+invisible(log.indep.nyc)
+
+log.indep.nyc <- select(log.indep.nyc, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+# Checking for -inf logged results
+invisible(log.indep.nyc)
+# Drop -inf log reults in lavailability
+log.indep.nyc<-log.indep.nyc[!(log.indep.nyc$lavailablility=="-Inf"),]
+invisible(log.indep.nyc)
+```
+
+#### Reviewing Linearity with Logged Independent and Dependent Variables
+- Curved relationships with the numeric variables
+  - Could require a quadratic or logarithmic transformation
+
+```{r linearity check of log-log model}
+pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
+```
+
+#### Continuous Variable Bin Manipulation
+- Since we are seeing large clouds of data but no linear trend with logged and unlogged data, we are going to move forward with binning the data to see if it will assist us in determining if there is a relationship between the continuous variables and log price
+
+```{r var.bin}
+nyc.bins <- nyc4
+
+nyc.bins$reviewsBin <- var.bin(nyc.bins$number_of_reviews, bins = 50)
+nyc.bins$nightsBin <- var.bin(nyc.bins$minimum_nights, bins = 50)
+nyc.bins$availBin <- var.bin(nyc.bins$availability_365, bins = 50)
+nyc.bins$listBin <- var.bin(nyc.bins$calculated_host_listings_count, bins = 10)
+nyc.bins$tsquBin <- var.bin(nyc.bins$tsquare_distance, bins = 20)
+
+nyc.bins <- select(nyc.bins,-c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+invisible(nyc.bins)
+```
+
+#### Reviewing Linearity with Binned Indepedent Variables
+- No linearity is presenting itself with a binned approach of the independent variables
+
+```{r linearity check of binned independent variables}
+nyc.bin.model <-lm(price~.,data=nyc.bins)
+#nyc.bins  %>% pairs() No color model
+pairs(nyc.bins,col=nyc.bins$neighbourhood) #Color by neighborhood
+```
+
+#### Explore potential correlation Neighborhood v Price
+- We have to this moment not be able to surface linearity relationships between our numerican independent varaibles and our dependentt variable
+- Next we will check for correltaion of the categorical variables: room_type & neighbourhood_group
+- We see a strong chance of correlation between Price and Neighbourhood Group
+
+```{r}
+plot(nyc4$neighbourhood, nyc4$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check", col=c(7,32,52,82,107)) 
+```
+
+- Narrowing down neighborhoods (randomly) to confirm neighbourhood is a significant categorical metrics to keep in MLR
+
+```{r}
+nycNeighborhood <- ddply(nyc4,.(neighbourhood), function(x) x[sample(nrow(x),1),])
+
+plot(nycNeighborhood$neighbourhood, nycNeighborhood$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check") 
+```
+
+#### Explore potential correlation Room Type v Price
+- We see a strong chance of corerlation between Price and Room Type
+
+```{r}
+plot(nyc4$room_type, nyc4$price, xlab = "Room Type", ylab = "Price", title = "Price v Room Type Correlation Check", col=c(7,32,52)) 
+```
+
+#### Modeling
+- We are not seeing any linear correlation between the dependent and independent numeric varaibles
+  - We have tried: linear regression, log-linear regression transformation, log-log regression transformation, binning, and outlier drop.
+- We are seeing a strong linear correlation between the dependent and independent categorical variables
+- We have surfaced the best residuals assumptions matched in a log-linear model
+  - Due to this we are moving forward with modeling a log-linear model with singular variables as well as all interaction terms
+  - This is to add complexity to our model, we have a low number of varaibles to select from
+    - In adding this complexity we are tryign to surface any possible linear variable interations that may contribute to our model
+    - If these are surfaced we will go back and use graphical means to verify the model's discovery
+
+```{r full model check}
+nyc.model = lm(lprice~neighbourhood + room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + tsquare_distance, data=log.nyc)
+summary(nyc.model)
+
+#Surfacing only significant neighborhoods
+nyc.model2 = tidy(nyc.model)
+options(scipen = 999)
+invisible(nyc.model2)
+nyc.modeldf <- nyc.model2[nyc.model2$p.value < 0.05,]
+invisible(view(nyc.modeldf))
+```
+
+```{r}
+#would reducing the data set to just sig values help?
+```
+
+#### Model selection attempts
+
+```{r intuitive model}
+#To be built and provided by Reagan, there should include about 4 or so intuitive models and we take the one with the best Adj rsquared
+rfit <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = nyc4)
+summary(rfit)
+plot(rfit)
+rfitl <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = log.nyc4)
+summary(rfitl)
+plot(rfitl)
+```
+
+```{r forward selection model}
+nyc.fwd = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method = "forward", data=log.nyc, nvmax=20)
+summary(nyc.fwd)$adjr2
+
+fwd.adjr2 <- summary(nyc.fwd)$adjr2
+plot(1:20, adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+fwd.index <- which(adjr2 == max(adjr2))
+points(fwd.index, adjr2[fwd.index],col="red", pch=10)
+```
+
+- Below are the final coeffecients based on the above forwad selection model with highest Adjusted r-squared at 15
+
+```{r}
+coef(nyc.fwd,15)
+```
+
+
+```{r backward selection model}
+nyc.bck = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method="backward", data=log.nyc, nvmax=20)
+summary(nyc.bck)$adjr2
+
+bck.adjr2 <- summary(nyc.bck)$adjr2
+plot(1:20, adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+bck.index <- which(adjr2 == max(adjr2))
+points(bck.index, adjr2[bck.index],col="red", pch=10)
+```
+
+- Below are the final coeffecients based on the above backward selection model with highest Adjusted r-squared at 15
+
+```{r}
+coef(nyc.bck,15)
+```
+
+```{r seqrep selection model}
+nyc.seq = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, method="seqrep", data=log.nyc, nvmax=20)
+summary(nyc.seq)$adjr2
+
+
+
+
+bck.adjr2 <- summary(nyc.bck)$adjr2
+plot(1:20, adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+bck.index <- which(adjr2 == max(adjr2))
+points(bck.index, adjr2[bck.index],col="red", pch=10)
+```
+
+```{r exhaustive selection model}
+#Due to an exhaustive method being too large. We are commenting out this model and moving forward with selective methods that will run
+#nyc.exh = regsubsets(lprice~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365, data=log.nyc, nvmax=20)
+#summary(nyc.exh)$adjr2
+#summary(nyc.exh)$rss
+#summary(nyc.exh)$bic
+```
+
+#### Assumptions Check on Intuitive Model
+- Residuals near normally distributed but still skewed
+- Envoking Central Limit Theorum due to such a large sample size
+- Constant Variance
+  - The QQ Plot shows an extreme deviation from normality. Even with the Central Limit Theorum we do not feel comforablte moving forward.
+  
+### XXXXXXXX
+
+```{r Assumptions Check on Intuitive Model}
+par(mfrow=c(2,2))
+full.model<-lm(price~.,data=nyc4)
+plot(XXXXXXX)
+```
+
+#### Assumptions Check on Log-Linear Intuitive Model
+- Risduals are near normally distributed with them being slightly off
+  - Envoking Central Limit Theorum due to such a large sample size
+  - Passed
+- Constant variance
+  - The QQ-plot is showing much less departure from normality
+  - Passed
+
+### XXXXXXXXX
+
+```{r Assumptions Check on Log-Linear Intuitive Model}
+par(mfrow=c(2,2))
+log.depend.model<-lm(lprice~.,data=log.nyc)
+plot(log.depend.model)
+```
+
+- Independence
+  - Assumed
+  - Passed
+- Multicollinearity
+  - We are seeing a high VIF for our distance to Times Square 
+
+```{r Multicollinearity Assumption on Log-Linear Intuitive Model}
+vif(log.depend.model)[,3]^2
+```
+
+#### MLR May Not Be The Best
+- Multiple linear regression is just one option in building a predictive model for a continuous response
+- We are seeing it as a bad option because
+  - The true relationship between the response and predictors is NOT “linear”.  The relationships are complex.
+    - We have gotten close, but we have worked extremely hard in specifying our model and manipulating the raw data to surface a linear relationship
+    - This makes the interpretation into the real world application difficult to interpret
+  - Since the above is true and our data is very large, we think that other methods such as Random Forest or K-NN would perform better.
+    - These options are less time consuming because the model complexity is built into the lagorithm
+    - We also do not have to specify how a relationship exists ahead of time
+- Since we see a strong relationship between the categorical variables, we move forward with a Two-Way ANOVA model to create a model way predict the price of a NYC AirBnB.
