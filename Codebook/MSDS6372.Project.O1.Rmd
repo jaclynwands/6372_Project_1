@@ -268,6 +268,15 @@ invisible(view(nyc.modeldf))
 
 ```{r intuitive model}
 #To be built and provided by Reagan, there should include about 4 or so intuitive models and we take the one with the best Adj rsquared
+
+rfit <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = nyc4)
+summary(rfit)
+plot(rfit)
+
+rfitl <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = nyc4)
+summary(rfitl)
+plot(rfitl)
+
 ```
 
 ```{r forward selection model}
