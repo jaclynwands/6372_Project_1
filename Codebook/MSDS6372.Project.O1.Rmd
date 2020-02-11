@@ -273,10 +273,9 @@ rfit <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neigh
 summary(rfit)
 plot(rfit)
 
-rfitl <- lm(log(price) ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = nyc4)
+rfitl <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = log.nyc4)
 summary(rfitl)
 plot(rfitl)
-
 ```
 
 ```{r forward selection model}
