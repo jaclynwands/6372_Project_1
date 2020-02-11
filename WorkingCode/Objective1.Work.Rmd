@@ -1,0 +1,86 @@
+---
+title: "xxx"
+author: "Jaclyn A Coate"
+date: "2/9/2020"
+output: html_document
+---
+
+
+#### Checking for Multicollinearity
+### Numerical v Numerical Multicollinearity
+- Multicollinearity will weaken the model
+  - number_of_reviews and reviews_per_month are correlated at 55%
+    - Removing reviews_per_month
+
+```{r multicollinearity1}
+corrNYC <- nyc3
+#Table numeric variables
+corrNYCTable <- corrNYC %>% keep(is.numeric) %>% cor %>% view
+#Plot numeric variables v numeric variables
+corrNYC %>% keep(is.numeric) %>% cor %>% corrplot("upper", addCoef.col = "white", number.digits = 2, number.cex = 0.5, method="square", order="hclust", tl.srt=45, tl.cex = 0.8)
+invisible(view(corrNYCTable))
+```
+
+```{r attrition: removing highly correlated variable}
+#Removing reviews_per_month due to high correlation of is and number_of_reviews
+nyc4 <- select(nyc3, -c("reviews_per_month"))
+```
+
+### Examining VIFs for Multicollinearity of No Transformation
+- The below results show us there is no need to remove any variables
+
+```{r examining VIFs}
+full.model<-lm(price~.,data=nyc4)  # . means all variable not mpg
+vif(full.model)[,3]^2
+
+alias(lm(price~.,data=nyc4))
+```
+
+#### Assumptions of Model
+
+```{r}
+par(mfrow=c(2,2))
+full.model<-lm(price~.,data=nyc4)
+plot(full.model)
+```
+
+#### Examining VIFs of Log Price Variable
+
+```{r exmaining log-linear VIFs}
+log.depend.model<-lm(lprice~.,data=log.nyc)  # . means all variable not mpg
+vif(log.depend.model)[,3]^2
+
+alias(lm(lprice~.,data=log.nyc))
+```
+
+#### Assumptions of Log-Linear Model
+
+```{r}
+par(mfrow=c(2,2))
+log.depend.model<-lm(lprice~.,data=log.nyc)
+plot(log.depend.model)
+```
+
+#### Examining VIFs of Log-Log Model
+
+```{r examining log-log VIFs}
+log.indep.model<-lm(lprice~.,data=log.indep.nyc)  # . means all variable not mpg
+vif(log.indep.model)[,3]^2
+
+alias(lm(lprice~.,data=log.indep.nyc))
+```
+
+#### Assumptions of Log-Log Model
+
+```{r}
+par(mfrow=c(2,2))
+log.indep.model<-lm(lprice~.,data=log.indep.nyc)
+plot(log.indep.model)
+```
+
+#### Assumptions of Binned Data
+
+```{r}
+par(mfrow=c(2,2))
+plot(nyc.bin.model)
+```
