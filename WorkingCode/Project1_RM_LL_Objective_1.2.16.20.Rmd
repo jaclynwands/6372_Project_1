@@ -1,0 +1,715 @@
+---
+title: "Project1_RM_Objective_1"
+Date: 2/16/2020
+Author: "Reagan Meagher and Laura Lazarescou"
+Output: "html"
+---
+
+# ----------
+##  SETUP
+# ----------
+
+```{r setup and clear envirornment, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+rm(list = ls()) #Clear envirornment code
+options(scipen=999) #No exponential formatting of numbers
+options(max.print=1000000)
+```
+
+```{r libraries}
+library(tidyverse)
+library(caret)
+library(mice)
+library(skimr)
+library(corrplot)
+library(car)
+library(ISLR)
+library(ggplot2)
+library(gridExtra)
+library(SamplingStrata)
+library(rbin)
+library(leaps)
+library(dplyr)
+library(ggplot2)
+library(geosphere)
+library(broom)
+library(plyr)
+library(glmnet)
+```
+
+# ----------
+##   EDA
+# ----------
+
+```{r EDA, create linear-linear data set}
+nycraw <- read.csv("https://raw.githubusercontent.com/JaclynCoate/6372_Project_1/master/AB_NYC_2019.csv", header = TRUE, strip.white=TRUE)
+nyc <- nycraw
+
+#Creating a new, tsquare_distance (distance to Times Square in miles)
+for (i in 1:nrow(nyc)) {
+  n <- (distHaversine(c(nyc$latitude[i], -nyc$longitude[i]), c(40.7580, 73.9855)) / 1609.344)
+  nyc$tsquare_distance[i] <- n
+}
+
+#Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
+nyc <- select(nyc, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood"))
+
+#### Zero Value Variable Check
+#- Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
+#- Checking on independent variables that have '0' as a value. Seeing that "availability_365" would mean the AirBnB isn't available at all, we are dropping those from our data set.
+nyc <- nyc[!(nyc$price==0),]
+nyc <- nyc[!(nyc$availability_365==0),]
+
+#Checking for NAs
+md.pattern(nyc)
+#Drop NAs that are present
+nyc <- na.omit(nyc)
+#Confirming NA drop
+nrow(nyc)
+
+#Storing categorical variables as factors
+skim(nyc)
+
+#Removing reviews_per_month due to high correlation of is and number_of_reviews
+nyc <- select(nyc, -c("reviews_per_month"))
+
+#Generate a summary of the current data set
+#summary(nyc)
+
+nyc <- filter(nyc, neighbourhood_group != "Staten Island")
+
+#Restricting data set to prices between $25 and $400 a night (affordable market)
+nyc <- filter(nyc, price >= 25 & price <= 400)
+
+#Removing outliers of minimum nights stay
+nyc <- nyc[!(nyc$minimum_nights > 365),]
+#invisible(view(nyc))
+
+#Creating linear-linear data set
+linear.nyc <- nyc
+
+#Linearity check of linear-linear data set
+#pairs(nyc,col=nyc$neighbourhood_group) #Color by neighborhood
+```
+
+```{r create log-linear data set}
+log.nyc <- nyc %>% mutate(lprice=log(price))
+log.nyc <- select(log.nyc, -c("price"))
+invisible(log.nyc)
+
+#Linearity check of log-linear data set
+#pairs(log.nyc,col=log.nyc$neighbourhood_group)
+```
+
+```{r create log-log data set}
+log.log.nyc <- log.nyc %>% mutate(lreviews=log(number_of_reviews))
+log.log.nyc <- log.log.nyc %>% mutate(lnights=log(minimum_nights))
+log.log.nyc <- log.log.nyc %>% mutate(llistings=log(calculated_host_listings_count))
+log.log.nyc <- log.log.nyc %>% mutate(lavailablility=log(availability_365))
+log.log.nyc <- log.log.nyc %>% mutate(ltsqr=log(tsquare_distance))
+invisible(log.log.nyc)
+
+log.log.nyc <- select(log.log.nyc, -c("minimum_nights", "number_of_reviews", "calculated_host_listings_count", "availability_365", "tsquare_distance"))
+# Checking for -inf logged results
+invisible(log.log.nyc)
+# Drop -inf log reults in lavailability
+log.log.nyc<-log.log.nyc[!(log.log.nyc$lavailablility=="-Inf"),]
+invisible(log.log.nyc)
+
+#Linearity Check of log-log data set
+#pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood_group) #Color by neighborhood
+```
+
+```{r hold predict function}
+#Really handy predict function
+predict.regsubsets =function (object , newdata ,id ,...){
+  form=as.formula (object$call [[2]])
+  mat=model.matrix(form ,newdata )
+  coefi=coef(object ,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi
+}
+```
+
+----------
+ MODELING
+----------
+
+TEST/TRAIN CREATION
+```{r create 70/30 train/test splits for each data source}
+set.seed(1234)
+
+#nyc
+index<-sample(1:dim(linear.nyc)[1],nrow(linear.nyc)*.7,replace=F)
+linear.train<-linear.nyc[index,]
+linear.test<-linear.nyc[-index,]
+
+#log.nyc
+index<-sample(1:dim(log.nyc)[1],nrow(log.nyc)*.7,replace=F)
+log.train<-log.nyc[index,]
+log.test<-log.nyc[-index,]
+```
+
+INTUITIVE LINEAR - LINEAR
+```{r intuitive model building - linear}
+#LINEAR - LINEAR
+linear.intuitive.train.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = linear.train)
+linear.intuitive.predictions <- linear.intuitive.train.model %>% predict(linear.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(linear.intuitive.predictions, linear.test$price))
+print("Test Root Mean Square Error: ")
+print(RMSE(linear.intuitive.predictions, linear.test$price))
+print("Test Mean Absolute Error: ")
+print(MAE(linear.intuitive.predictions, linear.test$price))
+print("Prediction Error Rate: ")
+RMSE(linear.intuitive.predictions, linear.test$price)/mean(linear.test$price)
+
+linear.intuitive.final.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = linear.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(linear.intuitive.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(linear.intuitive.final.model))
+print("Full Model BIC: ")
+print(BIC(linear.intuitive.final.model))
+print("Full Model RSS: ")
+print(sum(resid(linear.intuitive.final.model)^2))
+summary(linear.intuitive.final.model)
+par(mfrow=c(2,2))
+plot(linear.intuitive.final.model)
+vif(linear.intuitive.final.model)
+confint(linear.intuitive.final.model)
+```
+
+INTUITIVE LOG - LINEAR
+```{r intuitive model building - log}
+#LOG - LINEAR
+log.intuitive.test.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = log.train)
+log.intuitive.predictions <- log.intuitive.test.model %>% predict(log.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(log.intuitive.predictions, log.test$lprice))
+print("Test Root Mean Square Error: ")
+print(RMSE(log.intuitive.predictions, log.test$lprice))
+print("Test Mean Absolute Error: ")
+print(MAE(log.intuitive.predictions, log.test$lprice))
+print("Prediction Error Rate: ")
+RMSE(log.intuitive.predictions, log.test$lprice)/mean(log.test$lprice)
+
+log.intuitive.final.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = log.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(log.intuitive.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(log.intuitive.final.model))
+print("Full Model BIC: ")
+print(BIC(log.intuitive.final.model))
+print("Full Model RSS: ")
+print(sum(resid(log.intuitive.final.model)^2))
+summary(log.intuitive.final.model)
+par(mfrow=c(2,2))
+plot(log.intuitive.final.model)
+vif(log.intuitive.final.model)
+confint(log.intuitive.final.model)
+```
+
+------------------------------------------------------------------
+
+FORWARD LINEAR
+```{r forward selection model - linear}
+#FORWARD LINEAR
+linear.forward.select.model = regsubsets(price~.,data=linear.train,method="forward",nvmax=20)
+
+par(mfrow=c(1,3))
+fwd.bic <- summary(linear.forward.select.model)$bic
+plot(1:length(summary(linear.forward.select.model)$bic), fwd.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+fwd.index.bic <- which(fwd.bic == min(fwd.bic))
+points(fwd.index.bic, fwd.bic[fwd.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (BIC)")
+print(fwd.index.bic)
+
+fwd.adjr2 <- summary(linear.forward.select.model)$adjr2
+plot(1:length(summary(linear.forward.select.model)$adjr2), fwd.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+fwd.index.adjr2 <- which(fwd.adjr2 == max(fwd.adjr2))
+points(fwd.index.adjr2, fwd.adjr2[fwd.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (AR2)")
+print(fwd.index.adjr2)
+
+fwd.rss <- summary(linear.forward.select.model)$rss
+plot(1:length(summary(linear.forward.select.model)$rss), fwd.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+fwd.index.rss <- which(fwd.rss == min(fwd.rss))
+points(fwd.index.rss, fwd.rss[fwd.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (RSS)")
+print(fwd.index.rss)
+
+linear.forward.select.model2 = regsubsets(price~.,data=linear.train,method="forward",nvmax=(fwd.index.bic)+1)
+coef(linear.forward.select.model2,fwd.index.bic)
+
+linear.forward.train.model <-lm(price~neighbourhood_group + number_of_reviews + minimum_nights + calculated_host_listings_count + room_type + tsquare_distance,data=linear.train)
+linear.forward.predictions <- linear.forward.train.model %>% predict(linear.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(linear.forward.predictions, linear.test$price))
+print("Test Root Mean Square Error: ")
+print(RMSE(linear.forward.predictions, linear.test$price))
+print("Test Mean Absolute Error: ")
+print(MAE(linear.forward.predictions, linear.test$price))
+print("Prediction Error Rate: ")
+RMSE(linear.forward.predictions, linear.test$price)/mean(linear.test$price)
+
+linear.forward.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(linear.forward.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(linear.forward.final.model))
+print("Full Model BIC: ")
+print(BIC(linear.forward.final.model))
+print("Full Model RSS: ")
+print(sum(resid(linear.forward.final.model)^2))
+summary(linear.forward.final.model)
+par(mfrow=c(2,2))
+plot(linear.forward.final.model)
+vif(linear.forward.final.model)
+confint(linear.forward.final.model)
+```
+
+FORWARD LOG
+```{r forward selection model - log}
+#FORWARD LOG
+log.forward.select.model = regsubsets(lprice~.,data=log.train,method="forward",nvmax=500)
+
+par(mfrow=c(1,3))
+fwd.bic <- summary(log.forward.select.model)$bic
+plot(1:length(summary(log.forward.select.model)$bic), fwd.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+fwd.index.bic <- which(fwd.bic == min(fwd.bic))
+points(fwd.index.bic, fwd.bic[fwd.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (BIC)")
+print(fwd.index.bic)
+
+fwd.adjr2 <- summary(log.forward.select.model)$adjr2
+plot(1:length(summary(log.forward.select.model)$adjr2), fwd.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+fwd.index.adjr2 <- which(fwd.adjr2 == max(fwd.adjr2))
+points(fwd.index.adjr2, fwd.adjr2[fwd.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (AR2)")
+print(fwd.index.adjr2)
+
+fwd.rss <- summary(log.forward.select.model)$rss
+plot(1:length(summary(log.forward.select.model)$rss), fwd.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+fwd.index.rss <- which(fwd.rss == min(fwd.rss))
+points(fwd.index.rss, fwd.rss[fwd.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From Forward Selection (RSS)")
+print(fwd.index.rss)
+
+log.forward.select.model2 = regsubsets(lprice~.,data=log.train,method="forward",nvmax=(fwd.index.bic)+1)
+coef(log.forward.select.model2,fwd.index.bic)
+
+log.forward.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.forward.predictions <- log.forward.train.model %>% predict(log.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(log.forward.predictions, log.test$lprice))
+print("Test Root Mean Square Error: ")
+print(RMSE(log.forward.predictions, log.test$lprice))
+print("Test Mean Absolute Error: ")
+print(MAE(log.forward.predictions, log.test$lprice))
+print("Prediction Error Rate: ")
+RMSE(log.forward.predictions, log.test$lprice)/mean(log.test$lprice)
+
+log.forward.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(log.forward.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(log.forward.final.model))
+print("Full Model BIC: ")
+print(BIC(log.forward.final.model))
+print("Full Model RSS: ")
+print(sum(resid(log.forward.final.model)^2))
+summary(log.forward.final.model)
+par(mfrow=c(2,2))
+plot(log.forward.final.model)
+vif(log.forward.final.model)
+confint(log.forward.final.model)
+```
+
+BACKWARD LINEAR
+```{r backward selection model - linear}
+linear.backward.select.model = regsubsets(price~.,data=linear.train,method="backward",nvmax=500)
+
+par(mfrow=c(1,3))
+bkwrd.bic <- summary(linear.backward.select.model)$bic
+plot(1:length(summary(linear.backward.select.model)$bic), bkwrd.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+bkwrd.index.bic <- which(bkwrd.bic == min(bkwrd.bic))
+points(bkwrd.index.bic, bkwrd.bic[bkwrd.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (BIC)")
+print(bkwrd.index.bic)
+
+bkwrd.adjr2 <- summary(linear.backward.select.model)$adjr2
+plot(1:length(summary(linear.backward.select.model)$adjr2), bkwrd.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+bkwrd.index.adjr2 <- which(bkwrd.adjr2 == max(bkwrd.adjr2))
+points(bkwrd.index.adjr2, bkwrd.adjr2[bkwrd.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (AR2)")
+print(bkwrd.index.adjr2)
+
+bkwrd.rss <- summary(linear.backward.select.model)$rss
+plot(1:length(summary(linear.backward.select.model)$rss), bkwrd.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+bkwrd.index.rss <- which(bkwrd.rss == min(bkwrd.rss))
+points(bkwrd.index.rss, bkwrd.rss[bkwrd.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (RSS)")
+print(bkwrd.index.rss)
+
+linear.backward.select.model2 = regsubsets(price~.,data=linear.train,method="backward",nvmax=(bkwrd.index.bic)+1)
+coef(linear.backward.select.model2,bkwrd.index.bic)
+
+linear.backward.train.model <-lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
+linear.backward.predictions <- linear.backward.train.model %>% predict(linear.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(linear.backward.predictions, linear.test$price))
+print("Test Root Mean Square Error: ")
+print(RMSE(linear.backward.predictions, linear.test$price))
+print("Test Mean Absolute Error: ")
+print(MAE(linear.backward.predictions, linear.test$price))
+print("Prediction Error Rate: ")
+RMSE(linear.backward.predictions, linear.test$price)/mean(linear.test$price)
+
+linear.backward.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(linear.backward.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(linear.backward.final.model))
+print("Full Model BIC: ")
+print(BIC(linear.backward.final.model))
+print("Full Model RSS: ")
+print(sum(resid(linear.backward.final.model)^2))
+summary(linear.backward.final.model)
+par(mfrow=c(2,2))
+plot(linear.backward.final.model)
+vif(linear.backward.final.model)
+confint(linear.backward.final.model)
+```
+
+BACKWARD LOG
+```{r backward selection model - log}
+log.backward.select.model = regsubsets(lprice~.,data=log.train,method="backward",nvmax=500)
+
+par(mfrow=c(1,3))
+bkwrd.bic <- summary(log.backward.select.model)$bic
+plot(1:length(summary(log.backward.select.model)$bic), bkwrd.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+bkwrd.index.bic <- which(bkwrd.bic == min(bkwrd.bic))
+points(bkwrd.index.bic, bkwrd.bic[bkwrd.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (BIC)")
+print(bkwrd.index.bic)
+
+bkwrd.adjr2 <- summary(log.backward.select.model)$adjr2
+plot(1:length(summary(log.backward.select.model)$adjr2), bkwrd.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+bkwrd.index.adjr2 <- which(bkwrd.adjr2 == max(bkwrd.adjr2))
+points(bkwrd.index.adjr2, bkwrd.adjr2[bkwrd.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (AR2)")
+print(bkwrd.index.adjr2)
+
+bkwrd.rss <- summary(log.backward.select.model)$rss
+plot(1:length(summary(log.backward.select.model)$rss), bkwrd.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+bkwrd.index.rss <- which(bkwrd.rss == min(bkwrd.rss))
+points(bkwrd.index.rss, bkwrd.rss[bkwrd.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From backward Selection (RSS)")
+print(bkwrd.index.rss)
+
+log.backward.select.model2 = regsubsets(lprice~.,data=log.train,method="backward",nvmax=(bkwrd.index.bic)+1)
+coef(log.backward.select.model2,bkwrd.index.bic)
+
+log.backward.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.backward.predictions <- log.backward.train.model %>% predict(log.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(log.backward.predictions, log.test$lprice))
+print("Test Root Mean Square Error: ")
+print(RMSE(log.backward.predictions, log.test$lprice))
+print("Test Mean Absolute Error: ")
+print(MAE(log.backward.predictions, log.test$lprice))
+print("Prediction Error Rate: ")
+RMSE(log.backward.predictions, log.test$lprice)/mean(log.test$lprice)
+
+log.backward.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(log.backward.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(log.backward.final.model))
+print("Full Model BIC: ")
+print(BIC(log.backward.final.model))
+print("Full Model RSS: ")
+print(sum(resid(log.backward.final.model)^2))
+summary(log.backward.final.model)
+par(mfrow=c(2,2))
+plot(log.backward.final.model)
+vif(log.backward.final.model)
+confint(log.backward.final.model)
+```
+
+SEQREP LINEAR
+```{r seqrep selection model - linear}
+linear.seqrep.select.model = regsubsets(price~.,data=linear.train,method="seqrep",nvmax=500)
+
+par(mfrow=c(1,3))
+srep.bic <- summary(linear.seqrep.select.model)$bic
+plot(1:length(summary(linear.seqrep.select.model)$bic), srep.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+srep.index.bic <- which(srep.bic == min(srep.bic))
+points(srep.index.bic, srep.bic[srep.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (BIC)")
+print(srep.index.bic)
+
+srep.adjr2 <- summary(linear.seqrep.select.model)$adjr2
+plot(1:length(summary(linear.seqrep.select.model)$adjr2), srep.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+srep.index.adjr2 <- which(srep.adjr2 == max(srep.adjr2))
+points(srep.index.adjr2, srep.adjr2[srep.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (AR2)")
+print(srep.index.adjr2)
+
+srep.rss <- summary(linear.seqrep.select.model)$rss
+plot(1:length(summary(linear.seqrep.select.model)$rss), srep.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+srep.index.rss <- which(srep.rss == min(srep.rss))
+points(srep.index.rss, srep.rss[srep.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (RSS)")
+print(srep.index.rss)
+
+linear.seqrep.select.model2 = regsubsets(price~.,data=linear.train,method="seqrep",nvmax=(srep.index.bic)+1)
+coef(linear.seqrep.select.model2,srep.index.bic)
+
+linear.seqrep.train.model <-lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
+linear.seqrep.predictions <- linear.seqrep.train.model %>% predict(linear.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(linear.seqrep.predictions, linear.test$price))
+print("Test Root Mean Square Error: ")
+print(RMSE(linear.seqrep.predictions, linear.test$price))
+print("Test Mean Absolute Error: ")
+print(MAE(linear.seqrep.predictions, linear.test$price))
+print("Prediction Error Rate: ")
+RMSE(linear.seqrep.predictions, linear.test$price)/mean(linear.test$price)
+
+linear.seqrep.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(linear.seqrep.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(linear.seqrep.final.model))
+print("Full Model BIC: ")
+print(BIC(linear.seqrep.final.model))
+print("Full Model RSS: ")
+print(sum(resid(linear.seqrep.final.model)^2))
+summary(linear.seqrep.final.model)
+par(mfrow=c(2,2))
+plot(linear.seqrep.final.model)
+vif(linear.seqrep.final.model)
+confint(linear.seqrep.final.model)
+```
+
+seqrep LOG
+```{r seqrep selection model - log}
+set.seed(77)
+
+log.seqrep.select.model = regsubsets(lprice~.,data=log.train,method="seqrep",nvmax=500)
+
+par(mfrow=c(1,3))
+srep.bic <- summary(log.seqrep.select.model)$bic
+plot(1:length(summary(log.seqrep.select.model)$bic), srep.bic, type = "l", ylab = "BIC", xlab = "# Of Predictors")
+srep.index.bic <- which(srep.bic == min(srep.bic))
+points(srep.index.bic, srep.bic[srep.index.bic],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (BIC)")
+print(srep.index.bic)
+
+srep.adjr2 <- summary(log.seqrep.select.model)$adjr2
+plot(1:length(summary(log.seqrep.select.model)$adjr2), srep.adjr2, type = "l", ylab = "Adjusted R-squared", xlab = "# Of Predictors")
+srep.index.adjr2 <- which(srep.adjr2 == max(srep.adjr2))
+points(srep.index.adjr2, srep.adjr2[srep.index.adjr2],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (AR2)")
+print(srep.index.adjr2)
+
+srep.rss <- summary(log.seqrep.select.model)$rss
+plot(1:length(summary(log.seqrep.select.model)$rss), srep.rss, type = "l", ylab = "RSS", xlab = "# Of Predictors")
+srep.index.rss <- which(srep.rss == min(srep.rss))
+points(srep.index.rss, srep.rss[srep.index.rss],col="red", pch=10)
+print("")
+print("Selected Number of Predictors From seqrep Selection (RSS)")
+print(srep.index.rss)
+
+log.seqrep.select.model2 = regsubsets(lprice~.,data=log.train,method="seqrep",nvmax=(srep.index.bic)+1)
+coef(log.seqrep.select.model2,srep.index.bic)
+
+log.seqrep.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.seqrep.predictions <- log.seqrep.train.model %>% predict(log.test)
+print("")
+print("Test Adjusted R Squared: ")
+print(R2(log.seqrep.predictions, log.test$lprice))
+print("Test Root Mean Square Error: ")
+print(RMSE(log.seqrep.predictions, log.test$lprice))
+print("Test Mean Absolute Error: ")
+print(MAE(log.seqrep.predictions, log.test$lprice))
+print("Prediction Error Rate: ")
+RMSE(log.seqrep.predictions, log.test$lprice)/mean(log.test$lprice)
+
+log.seqrep.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+print("Full Model Adjusted R Squared: ")
+print(summary(log.seqrep.final.model)$adj.r.squared)
+print("Full Model AIC: ")
+print(AIC(log.seqrep.final.model))
+print("Full Model BIC: ")
+print(BIC(log.seqrep.final.model))
+print("Full Model RSS: ")
+print(sum(resid(log.seqrep.final.model)^2))
+summary(log.seqrep.final.model)
+par(mfrow=c(2,2))
+plot(log.seqrep.final.model)
+vif(log.seqrep.final.model)
+confint(log.seqrep.final.model)
+```
+
+## Begin Ridge, LASSO, Elastic Net Analysis
+
+```{r }
+
+## Ridge, LASSO and Elastic Net Regression and Regularization
+## Source:
+
+# https://hackernoon.com/an-introduction-to-ridge-lasso-and-elastic-net-regression-cca60b4b934f
+
+# library(tidyverse) # all included in top of file library statements
+# library(caret)
+# library(glmnet)
+
+# Using train and test datasets created above
+
+# Format Predictors for glmnet() train  (linear and log(price))
+
+x <- model.matrix(price~., linear.train)[,-1]
+xlog <- model.matrix(lprice~., log.train)[,-1]
+
+# Format responses for glmnet() train (linear and log(price))
+
+y <- linear.train$price
+ylog <- log.train$lprice
+
+```
+
+## Linear-Linear Ridge Regularization, glmnet() alpha=0
+
+```{r Ridge}
+# Performing Ridge regression
+# As we mentioned in the previous sections, lambda values have a large effect on coefficients so now we will compute and choose a suitable one.
+# Then we perform a cross validation with the lambda value corresponding to the lowest prediction error before fitting the data to the model and viewing the coefficients.
+
+cv.r <- cv.glmnet(x, y, alpha = 0) # alpha=0 is Ridge Regularization, choose minimum lambda
+cv.r$lambda.min
+model.ridge <- glmnet(x, y, alpha = 0, lambda = cv.r$lambda.min)
+coef(model.ridge)
+plot(cv.r)
+
+## Test Linear Ridge Model for Accuracy, RMSE and R-squared
+
+x.test.ridge <- model.matrix(price ~., linear.test)[,-1]
+predictions.ridge <- model.ridge %>% predict(x.test.ridge) %>% as.vector()
+data.frame(RMSE.r = RMSE(predictions.ridge, linear.test$price),Rsquare.r = R2(predictions.ridge, linear.test$price))
+```
+
+
+## Log-Linear Ridge Regularization, glmnet() alpha=0
+
+```{r Log-Ridge}
+# Performing Log-Linear Ridge regression
+
+cv.r <- cv.glmnet(xlog, ylog, alpha = 0) # alpha=0 is Ridge Regularization, choose minimum lambda
+cv.r$lambda.min
+model.ridgeL <- glmnet(xlog, ylog, alpha = 0, lambda = cv.r$lambda.min)
+coef(model.ridgeL)
+plot(cv.r)
+
+## Test Log-Linear Ridge Model for Accuracy, RMSE and R-squared
+
+xlog.test.ridge <- model.matrix(lprice ~., log.test)[,-1]
+log.predictions.ridge <- model.ridgeL %>% predict(xlog.test.ridge) %>% as.vector()
+data.frame(RMSE.r = RMSE(log.predictions.ridge, log.test$lprice),Rsquare.r=R2(log.predictions.ridge, log.test$lprice))
+```
+## Linear-Linear LASSO Regularization, glmnet() alpha=1
+
+```{r Linear LASSO}
+
+cv.L <- cv.glmnet(x, y, alpha = 1) # alpha=1 is LASSO Regularization, choose minimum lambda
+cv.L$lambda.min
+model.lasso <- glmnet(x, y, alpha = 1, lambda = cv.L$lambda.min)
+coef(model.lasso)
+plot(cv.L)
+
+## Test Linear LASSO Model for Accuracy, RMSE and R-squared
+
+x.test.lasso <- model.matrix(price ~., linear.test)[,-1]
+predictions.lasso <- model.lasso %>% predict(x.test.lasso) %>% as.vector()
+data.frame(RMSE.r = RMSE(predictions.lasso, linear.test$price),Rsquare.r = R2(predictions.lasso, linear.test$price))
+```
+
+## Log-Linear LASSO Regression, glmnet() alpha=1
+
+```{r Log-LASSO}
+# Performing Log-Linear LASSO regression
+
+cv.r <- cv.glmnet(xlog, ylog, alpha = 1) # alpha=1 is LASSO Regularization, choose minimum lambda
+cv.r$lambda.min
+model.lassoL <- glmnet(xlog, ylog, alpha = 1, lambda = cv.r$lambda.min)
+coef(model.lassoL)
+plot(cv.r)
+
+## Test Log-Linear LASSO Model for Accuracy, RMSE and R-squared
+
+xlog.test.lasso <- model.matrix(lprice ~., log.test)[,-1]
+log.predictions.lasso <- model.lassoL %>% predict(xlog.test.lasso) %>% as.vector()
+data.frame(RMSE.r = RMSE(log.predictions.lasso, log.test$lprice),Rsquare.r=R2(log.predictions.lasso, log.test$lprice))
+```
+
+## Linear-Linear Elastic Net Regression, selecting alpha=.5
+
+```{r elastic net}
+
+cv.EN <- cv.glmnet(x, y, alpha = .5) # alpha=.5 is a chosen value between 0 and 1
+cv.EN$lambda.min
+model.elasticnet <- glmnet(x, y, alpha = .5, lambda = cv.EN$lambda.min)
+coef(model.elasticnet)
+plot(cv.EN)
+
+## Test Linear Elastic Net Model for Accuracy, RMSE and R-squared
+
+x.test.elasticnet <- model.matrix(price ~., linear.test)[,-1]
+predictions.elasticnet <- model.elasticnet %>% predict(x.test.elasticnet) %>% as.vector()
+data.frame(RMSE.r = RMSE(predictions.elasticnet, linear.test$price),Rsquare.r = R2(predictions.elasticnet, linear.test$price))
+```
+## Log-Linear Elastic Net Regression, selecting alpha=.1
+
+```{r Log-Elastic Net}
+# Performing Log-Linear Elastic Net regression
+
+cv.r <- cv.glmnet(xlog, ylog, alpha = .1) # alpha=.1 is chosen value for Elastic Net Regularization, choose minimum lambda
+cv.r$lambda.min
+model.ENL <- glmnet(xlog, ylog, alpha = .1, lambda = cv.r$lambda.min)
+coef(model.ENL)
+plot(cv.r)
+
+## Test Log-Linear LASSO Model for Accuracy, RMSE and R-squared
+
+xlog.test.EN <- model.matrix(lprice ~., log.test)[,-1]
+log.predictions.EN <- model.ENL %>% predict(xlog.test.EN) %>% as.vector()
+data.frame(RMSE.r = RMSE(log.predictions.EN, log.test$lprice),Rsquare.r=R2(log.predictions.EN, log.test$lprice))
+```
