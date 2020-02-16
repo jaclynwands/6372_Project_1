@@ -52,7 +52,7 @@ for (i in 1:nrow(nyc)) {
 }
 
 #Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
-nyc <- select(nyc, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood_group"))
+nyc <- select(nyc, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood"))
 
 #### Zero Value Variable Check
 #- Checking on dependent variable range to make sure if there are zero's to remove. It would not be free to stay in NYC.
@@ -61,11 +61,11 @@ nyc <- nyc[!(nyc$price==0),]
 nyc <- nyc[!(nyc$availability_365==0),]
 
 #Checking for NAs
-#md.pattern(nyc)
+md.pattern(nyc)
 #Drop NAs that are present
 nyc <- na.omit(nyc)
 #Confirming NA drop
-#nrow(nyc)
+nrow(nyc)
 
 #Storing categorical variables as factors
 skim(nyc)
@@ -75,6 +75,8 @@ nyc <- select(nyc, -c("reviews_per_month"))
 
 #Generate a summary of the current data set
 #summary(nyc)
+
+nyc <- filter(nyc, neighbourhood_group != "Staten Island")
 
 #Restricting data set to prices between $25 and $400 a night (affordable market)
 nyc <- filter(nyc, price >= 25 & price <= 400)
@@ -87,7 +89,7 @@ nyc <- nyc[!(nyc$minimum_nights > 365),]
 linear.nyc <- nyc
 
 #Linearity check of linear-linear data set
-#pairs(nyc,col=nyc$neighbourhood) #Color by neighborhood
+#pairs(nyc,col=nyc$neighbourhood_group) #Color by neighborhood
 ```
 
 ```{r create log-linear data set}
@@ -96,7 +98,7 @@ log.nyc <- select(log.nyc, -c("price"))
 invisible(log.nyc)
 
 #Linearity check of log-linear data set
-#pairs(log.nyc,col=log.nyc$neighbourhood)
+#pairs(log.nyc,col=log.nyc$neighbourhood_group)
 ```
 
 ```{r create log-log data set}
@@ -115,7 +117,7 @@ log.log.nyc<-log.log.nyc[!(log.log.nyc$lavailablility=="-Inf"),]
 invisible(log.log.nyc)
 
 #Linearity Check of log-log data set
-#pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
+#pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood_group) #Color by neighborhood
 ```
 
 ```{r hold predict function}
@@ -134,16 +136,16 @@ predict.regsubsets =function (object , newdata ,id ,...){
 ----------
 
 TEST/TRAIN CREATION
-```{r create 90/10 train/test splits for each data source}
-set.seed(100)
+```{r create 70/30 train/test splits for each data source}
+set.seed(1234)
 
 #nyc
-index<-sample(1:dim(linear.nyc)[1],nrow(linear.nyc)*.9,replace=F)
+index<-sample(1:dim(linear.nyc)[1],nrow(linear.nyc)*.7,replace=F)
 linear.train<-linear.nyc[index,]
 linear.test<-linear.nyc[-index,]
 
 #log.nyc
-index<-sample(1:dim(log.nyc)[1],nrow(log.nyc)*.9,replace=F)
+index<-sample(1:dim(log.nyc)[1],nrow(log.nyc)*.7,replace=F)
 log.train<-log.nyc[index,]
 log.test<-log.nyc[-index,]
 ```
@@ -151,7 +153,7 @@ log.test<-log.nyc[-index,]
 INTUITIVE LINEAR - LINEAR
 ```{r intuitive model building - linear}
 #LINEAR - LINEAR
-linear.intuitive.train.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = linear.train)
+linear.intuitive.train.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = linear.train)
 linear.intuitive.predictions <- linear.intuitive.train.model %>% predict(linear.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -163,7 +165,7 @@ print(MAE(linear.intuitive.predictions, linear.test$price))
 print("Prediction Error Rate: ")
 RMSE(linear.intuitive.predictions, linear.test$price)/mean(linear.test$price)
 
-linear.intuitive.final.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = linear.nyc)
+linear.intuitive.final.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = linear.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(linear.intuitive.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -181,7 +183,7 @@ confint(linear.intuitive.final.model)
 INTUITIVE LOG - LINEAR
 ```{r intuitive model building - log}
 #LOG - LINEAR
-log.intuitive.test.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = log.train)
+log.intuitive.test.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = log.train)
 log.intuitive.predictions <- log.intuitive.test.model %>% predict(log.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -193,7 +195,7 @@ print(MAE(log.intuitive.predictions, log.test$lprice))
 print("Prediction Error Rate: ")
 RMSE(log.intuitive.predictions, log.test$lprice)/mean(log.test$lprice)
 
-log.intuitive.final.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = log.nyc)
+log.intuitive.final.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood_group + room_type + neighbourhood_group:room_type, data = log.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(log.intuitive.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -213,9 +215,7 @@ confint(log.intuitive.final.model)
 FORWARD LINEAR
 ```{r forward selection model - linear}
 #FORWARD LINEAR
-set.seed(77)
-
-linear.forward.select.model = regsubsets(price~neighbourhood + room_type + neighbourhood:room_type + minimum_nights + number_of_reviews + calculated_host_listings_count + availability_365 + minimum_nights:number_of_reviews + minimum_nights:calculated_host_listings_count + number_of_reviews:calculated_host_listings_count + availability_365:minimum_nights + availability_365:number_of_reviews + availability_365:calculated_host_listings_count + tsquare_distance:minimum_nights + tsquare_distance:number_of_reviews + tsquare_distance:calculated_host_listings_count + tsquare_distance:availability_365,data=linear.train,method="forward",nvmax=500)
+linear.forward.select.model = regsubsets(price~.,data=linear.train,method="forward",nvmax=20)
 
 par(mfrow=c(1,3))
 fwd.bic <- summary(linear.forward.select.model)$bic
@@ -245,7 +245,7 @@ print(fwd.index.rss)
 linear.forward.select.model2 = regsubsets(price~.,data=linear.train,method="forward",nvmax=(fwd.index.bic)+1)
 coef(linear.forward.select.model2,fwd.index.bic)
 
-linear.forward.train.model <-lm(price~neighbourhood + number_of_reviews + minimum_nights + calculated_host_listings_count + room_type + tsquare_distance,data=linear.train)
+linear.forward.train.model <-lm(price~neighbourhood_group + number_of_reviews + minimum_nights + calculated_host_listings_count + room_type + tsquare_distance,data=linear.train)
 linear.forward.predictions <- linear.forward.train.model %>% predict(linear.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -257,7 +257,7 @@ print(MAE(linear.forward.predictions, linear.test$price))
 print("Prediction Error Rate: ")
 RMSE(linear.forward.predictions, linear.test$price)/mean(linear.test$price)
 
-linear.forward.final.model <- lm(price~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+linear.forward.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(linear.forward.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -274,8 +274,6 @@ plot(linear.forward.final.model)
 FORWARD LOG
 ```{r forward selection model - log}
 #FORWARD LOG
-set.seed(77)
-
 log.forward.select.model = regsubsets(lprice~.,data=log.train,method="forward",nvmax=500)
 
 par(mfrow=c(1,3))
@@ -306,7 +304,7 @@ print(fwd.index.rss)
 log.forward.select.model2 = regsubsets(lprice~.,data=log.train,method="forward",nvmax=(fwd.index.bic)+1)
 coef(log.forward.select.model2,fwd.index.bic)
 
-log.forward.train.model <-lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.forward.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
 log.forward.predictions <- log.forward.train.model %>% predict(log.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -318,7 +316,7 @@ print(MAE(log.forward.predictions, log.test$lprice))
 print("Prediction Error Rate: ")
 RMSE(log.forward.predictions, log.test$lprice)/mean(log.test$lprice)
 
-log.forward.final.model <- lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+log.forward.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(log.forward.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -334,8 +332,6 @@ plot(log.forward.final.model)
 
 BACKWARD LINEAR
 ```{r backward selection model - linear}
-set.seed(77)
-
 linear.backward.select.model = regsubsets(price~.,data=linear.train,method="backward",nvmax=500)
 
 par(mfrow=c(1,3))
@@ -366,7 +362,7 @@ print(bkwrd.index.rss)
 linear.backward.select.model2 = regsubsets(price~.,data=linear.train,method="backward",nvmax=(bkwrd.index.bic)+1)
 coef(linear.backward.select.model2,bkwrd.index.bic)
 
-linear.backward.train.model <-lm(price~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
+linear.backward.train.model <-lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
 linear.backward.predictions <- linear.backward.train.model %>% predict(linear.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -378,7 +374,7 @@ print(MAE(linear.backward.predictions, linear.test$price))
 print("Prediction Error Rate: ")
 RMSE(linear.backward.predictions, linear.test$price)/mean(linear.test$price)
 
-linear.backward.final.model <- lm(price~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+linear.backward.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(linear.backward.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -394,8 +390,6 @@ plot(linear.backward.final.model)
 
 BACKWARD LOG
 ```{r backward selection model - log}
-set.seed(77)
-
 log.backward.select.model = regsubsets(lprice~.,data=log.train,method="backward",nvmax=500)
 
 par(mfrow=c(1,3))
@@ -426,7 +420,7 @@ print(bkwrd.index.rss)
 log.backward.select.model2 = regsubsets(lprice~.,data=log.train,method="backward",nvmax=(bkwrd.index.bic)+1)
 coef(log.backward.select.model2,bkwrd.index.bic)
 
-log.backward.train.model <-lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.backward.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
 log.backward.predictions <- log.backward.train.model %>% predict(log.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -438,7 +432,7 @@ print(MAE(log.backward.predictions, log.test$lprice))
 print("Prediction Error Rate: ")
 RMSE(log.backward.predictions, log.test$lprice)/mean(log.test$lprice)
 
-log.backward.final.model <- lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+log.backward.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(log.backward.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -454,8 +448,6 @@ plot(log.backward.final.model)
 
 SEQREP LINEAR
 ```{r seqrep selection model - linear}
-set.seed(77)
-
 linear.seqrep.select.model = regsubsets(price~.,data=linear.train,method="seqrep",nvmax=500)
 
 par(mfrow=c(1,3))
@@ -486,7 +478,7 @@ print(srep.index.rss)
 linear.seqrep.select.model2 = regsubsets(price~.,data=linear.train,method="seqrep",nvmax=(srep.index.bic)+1)
 coef(linear.seqrep.select.model2,srep.index.bic)
 
-linear.seqrep.train.model <-lm(price~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
+linear.seqrep.train.model <-lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=linear.train)
 linear.seqrep.predictions <- linear.seqrep.train.model %>% predict(linear.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -498,7 +490,7 @@ print(MAE(linear.seqrep.predictions, linear.test$price))
 print("Prediction Error Rate: ")
 RMSE(linear.seqrep.predictions, linear.test$price)/mean(linear.test$price)
 
-linear.seqrep.final.model <- lm(price~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
+linear.seqrep.final.model <- lm(price~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = linear.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(linear.seqrep.final.model)$adj.r.squared)
 print("Full Model AIC: ")
@@ -546,7 +538,7 @@ print(srep.index.rss)
 log.seqrep.select.model2 = regsubsets(lprice~.,data=log.train,method="seqrep",nvmax=(srep.index.bic)+1)
 coef(log.seqrep.select.model2,srep.index.bic)
 
-log.seqrep.train.model <-lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
+log.seqrep.train.model <-lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance,data=log.train)
 log.seqrep.predictions <- log.seqrep.train.model %>% predict(log.test)
 print("")
 print("Test Adjusted R Squared: ")
@@ -558,7 +550,7 @@ print(MAE(log.seqrep.predictions, log.test$lprice))
 print("Prediction Error Rate: ")
 RMSE(log.seqrep.predictions, log.test$lprice)/mean(log.test$lprice)
 
-log.seqrep.final.model <- lm(lprice~neighbourhood+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
+log.seqrep.final.model <- lm(lprice~neighbourhood_group+number_of_reviews+minimum_nights+calculated_host_listings_count+room_type+tsquare_distance, data = log.nyc)
 print("Full Model Adjusted R Squared: ")
 print(summary(log.seqrep.final.model)$adj.r.squared)
 print("Full Model AIC: ")
