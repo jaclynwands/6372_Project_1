@@ -1,7 +1,7 @@
 ---
-title:  "Project1_RM_Objective_1"
-Author: "Reagan Meagher"
-Date:   "2/10/2020"
+title: "Project1_RM_Objective_1"
+Date: 2/10/2020
+Author: Reagan Meagher
 ---
 
 ----------
@@ -118,7 +118,7 @@ invisible(log.log.nyc)
 #pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
 ```
 
-```{r create 90/10 train/test splits for each data source}
+```{r hold predict function}
 #Really handy predict function
 predict.regsubsets =function (object , newdata ,id ,...){
   form=as.formula (object$call [[2]])
@@ -149,7 +149,7 @@ log.test<-log.nyc[-index,]
 ```
 
 INTUITIVE LINEAR - LINEAR
-```{r intuitive model building}
+```{r intuitive model building - linear}
 #LINEAR - LINEAR
 linear.intuitive.train.model <- lm(price ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = linear.train)
 linear.intuitive.predictions <- linear.intuitive.train.model %>% predict(linear.test)
@@ -179,7 +179,7 @@ confint(linear.intuitive.final.model)
 ```
 
 INTUITIVE LOG - LINEAR
-```{r intuitive model building}
+```{r intuitive model building - log}
 #LOG - LINEAR
 log.intuitive.test.model <- lm(lprice ~ minimum_nights + number_of_reviews + tsquare_distance + neighbourhood + room_type + neighbourhood:room_type, data = log.train)
 log.intuitive.predictions <- log.intuitive.test.model %>% predict(log.test)
@@ -211,7 +211,7 @@ confint(log.intuitive.final.model)
 ------------------------------------------------------------------
 
 FORWARD LINEAR
-```{r forward selection model}
+```{r forward selection model - linear}
 #FORWARD LINEAR
 set.seed(77)
 
@@ -272,7 +272,7 @@ plot(linear.forward.final.model)
 ```
 
 FORWARD LOG
-```{r forward selection model}
+```{r forward selection model - log}
 #FORWARD LOG
 set.seed(77)
 
@@ -333,7 +333,7 @@ plot(log.forward.final.model)
 ```
 
 BACKWARD LINEAR
-```{r backward selection model}
+```{r backward selection model - linear}
 set.seed(77)
 
 linear.backward.select.model = regsubsets(price~.,data=linear.train,method="backward",nvmax=500)
@@ -393,7 +393,7 @@ plot(linear.backward.final.model)
 ```
 
 BACKWARD LOG
-```{r backward selection model}
+```{r backward selection model - log}
 set.seed(77)
 
 log.backward.select.model = regsubsets(lprice~.,data=log.train,method="backward",nvmax=500)
@@ -453,7 +453,7 @@ plot(log.backward.final.model)
 ```
 
 SEQREP LINEAR
-```{r seqrep selection model}
+```{r seqrep selection model - linear}
 set.seed(77)
 
 linear.seqrep.select.model = regsubsets(price~.,data=linear.train,method="seqrep",nvmax=500)
@@ -513,7 +513,7 @@ plot(linear.seqrep.final.model)
 ```
 
 seqrep LOG
-```{r seqrep selection model}
+```{r seqrep selection model - log}
 set.seed(77)
 
 log.seqrep.select.model = regsubsets(lprice~.,data=log.train,method="seqrep",nvmax=500)
