@@ -409,12 +409,12 @@ nyc.anova.diffdf
 - Move forward with the Tukey-Kramer to discover what factors and/or combinations contribute to predicting the price of a NYC AirBnB
 
 ```{r log tukey pvalues}
-#nyc.anova.log.diff <- TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95)
-#nyc.anova.log.diff
+nyc.anova.log.diff <- TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95)
+nyc.anova.log.diff
 ```
 
 ```{r log tukey plot CI}
-#plot(TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95))
+plot(TukeyHSD(nyc.model.fit.log,"neighbourhood_group:room_type", conf.level = .95))
 ```
 
 #### Back Transformation
