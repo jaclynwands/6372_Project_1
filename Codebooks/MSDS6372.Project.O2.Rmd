@@ -60,7 +60,7 @@ head(nycraw)
 
 ```{r drop irrelevant variables}
 #Dropping logical irrelevant variables: "id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighborhood"
-nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood_group"))
+nyc2 <- select(nycraw, -c("id", "name", "host_id", "host_name", "last_review", "latitude", "longitude", "neighbourhood"))
 head(nyc2)
 ```
 
@@ -137,7 +137,7 @@ invisible(view(nyc4))
 
 ```{r linearity check}
 #nyc4 %>% pairs() No color model
-pairs(nyc4,col=nyc4$neighbourhood) #Color by neighborhood
+pairs(nyc4,col=nyc4$neighbourhood_group) #Color by neighborhood
 ```
 
 #### Creating new Log price variable
@@ -155,7 +155,7 @@ invisible(log.nyc)
   - Could require a quadratic or logarithmic transformation
 
 ```{r linearity check of log-linear model}
-pairs(log.nyc,col=log.nyc$neighbourhood)
+pairs(log.nyc,col=log.nyc$neighbourhood_group)
 ```
 
 #### Log-log model
@@ -182,7 +182,7 @@ invisible(log.indep.nyc)
   - Could require a quadratic or logarithmic transformation
 
 ```{r linearity check of log-log model}
-pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood) #Color by neighborhood
+pairs(log.indep.nyc,col=log.indep.nyc$neighbourhood_group) #Color by neighborhood
 ```
 
 #### Continuous Variable Bin Manipulation
@@ -207,7 +207,7 @@ invisible(nyc.bins)
 ```{r linearity check of binned independent variables}
 nyc.bin.model <-lm(price~.,data=nyc.bins)
 #nyc.bins  %>% pairs() No color model
-pairs(nyc.bins,col=nyc.bins$neighbourhood) #Color by neighborhood
+pairs(nyc.bins,col=nyc.bins$neighbourhood_group) #Color by neighborhood
 ```
 
 #### Explore potential correlation Neighborhood v Price
@@ -216,15 +216,14 @@ pairs(nyc.bins,col=nyc.bins$neighbourhood) #Color by neighborhood
 - We see a strong chance of correlation between Price and Neighbourhood Group
 
 ```{r}
-plot(nyc4$neighbourhood, nyc4$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check", col=c(7,32,52,82,107)) 
+plot(nyc4$neighbourhood_group, nyc4$price, xlab = "Neighbourhood Group", ylab = "Price", title = "Price v Neighbourhood Group Correlation Check", col=c(7,32,52,82,107)) 
 ```
 
-- Narrowing down neighborhoods (randomly) to confirm neighbourhood is a significant categorical metrics to keep in MLR
-
 ```{r}
-nycNeighborhood <- ddply(nyc4,.(neighbourhood), function(x) x[sample(nrow(x),1),])
+#Narrowing down neighborhoods (randomly) to confirm neighbourhood is a significant categorical metrics to keep in MLR
+#nycNeighborhood <- ddply(nyc4,.(neighbourhood), function(x) x[sample(nrow(x),1),])
 
-plot(nycNeighborhood$neighbourhood, nycNeighborhood$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check") 
+#plot(nycNeighborhood$neighbourhood_group, nycNeighborhood$price, xlab = "Neighbourhood", ylab = "Price", title = "Price v Neighbourhood Correlation Check") 
 ```
 
 #### Explore potential correlation Room Type v Price
@@ -235,7 +234,7 @@ plot(nyc4$room_type, nyc4$price, xlab = "Room Type", ylab = "Price", title = "Pr
 ```
 
 #### Modeling
-- We are not seeing any linear correlation between the dependent and independent numeric varaibles
+- We are not seeing any linear correlation between the dependent and independent numeric (continuous) varaibles
   - We have tried: linear regression, log-linear regression transformation, log-log regression transformation, binning, and outlier drop.
 - We are seeing a strong linear correlation between the dependent and independent categorical variables
 - We have surfaced the best residuals assumptions matched in a log-linear model
